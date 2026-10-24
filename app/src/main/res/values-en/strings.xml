@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SoundFlow</string>
+
+    <string name="nav_profile">Profile</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="nav_playlists">Playlists</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_library">Library</string>
+
+    <string name="search_hint">Search for a song, an artist…</string>
+    <string name="home_placeholder">Home — suggestions coming soon</string>
+    <string name="test_playback_button">Test playback (validate audio pipeline)</string>
+    <string name="library_empty">No history yet — songs you listen to will show up here.</string>
+    <string name="downloads_placeholder">Downloads — coming soon</string>
+
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_sleep_timer">Sleep timer</string>
+    <string name="settings_off">Off</string>
+    <string name="settings_crossfade_desc">Fade transition between songs (coming soon)</string>
+    <string name="settings_equalizer">Equalizer</string>
+    <string name="eq_flat">Flat</string>
+    <string name="eq_bass">Bass Boost</string>
+    <string name="eq_treble">Treble Boost</string>
+    <string name="eq_vocal">Vocal</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_reset">Reset (delete all data)</string>
+    <string name="reset_dialog_title">Reset the app?</string>
+    <string name="reset_dialog_text">This deletes your entire library, downloads, and playlists — this can\'t be undone.</string>
+    <string name="reset_confirm">Reset</string>
+    <string name="reset_cancel">Cancel</string>
+
+    <string name="download_choice_title">Download this song</string>
+    <string name="download_audio">Audio</string>
+    <string name="download_video">Video</string>
+    <string name="download_started">Download started</string>
+    <string name="download_video_no_audio_warning">Video with no sound (audio/video merging not available yet)</string>
+    <string name="no_stream_found">Can\'t play this song (no stream found).</string>
+    <string name="download_no_stream_found">Download failed: no stream available for this song.</string>
+    <string name="playback_error_prefix">Playback failed: </string>
+
+    <string name="delete_confirm_title">Delete this download?</string>
+    <string name="delete_confirm_text">It will also be removed from any offline playlists containing it.</string>
+    <string name="delete_action">Delete</string>
+    <string name="cancel_action">Cancel</string>
+    <string name="download_deleted">Download deleted</string>
+    <string name="download_in_progress">Downloading…</string>
+
+    <string name="playlist_favorites">Favorites</string>
+    <string name="playlist_add_title">Add to a playlist</string>
+    <string name="playlist_added">Added to playlist</string>
+    <string name="playlist_add_blocked">This song isn\'t downloaded — only online playlists are shown.</string>
+
+    <string name="playlists_title">Playlists</string>
+    <string name="import_button_label">Import</string>
+    <string name="import_success">Files imported successfully</string>
+    <string name="playlist_rename">Rename playlist</string>
+    <string name="playlist_share">Share playlist</string>
+    <string name="playlist_import_url">Import via URL</string>
+    <string name="playlist_import_hint">Paste playlist URL or link</string>
+    <string name="playlists_empty">No playlists yet.</string>
+    <string name="playlist_create">New playlist</string>
+    <string name="playlist_name_label">Playlist name</string>
+    <string name="playlist_type_online">Online (any song)</string>
+    <string name="playlist_type_offline">Offline (downloaded only)</string>
+    <string name="playlist_create_confirm">Create</string>
+    <string name="playlist_cancel">Cancel</string>
+    <string name="playlist_empty_tracks">This playlist is empty.</string>
+    <string name="playlist_offline_blocked">This song isn\'t downloaded — it can\'t be added to an offline playlist.</string>
+    <string name="playlist_name_already_exists">A playlist with this name already exists.</string>
+    <string name="offline_indicator">Offline</string>
+
+    <string name="home_section_trending_hits">Trending Hits</string>
+    <string name="home_section_trending_artists">Trending Artists</string>
+    <string name="home_section_your_playlists">Your Playlists</string>
+
+    <string name="settings_section_stats">Listening Statistics</string>
+    <string name="stats_today">Today</string>
+    <string name="stats_week">Last 7 days</string>
+    <string name="stats_month">Last 30 days</string>
+    <string name="stats_all_time">All time</string>
+</resources>

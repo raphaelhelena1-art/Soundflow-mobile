@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SoundFlow</string>
+
+    <string name="nav_profile">Profil</string>
+    <string name="nav_downloads">Téléchargements</string>
+    <string name="nav_playlists">Playlists</string>
+    <string name="nav_home">Accueil</string>
+    <string name="nav_search">Recherche</string>
+    <string name="nav_library">Bibliothèque</string>
+
+    <string name="search_hint">Rechercher un morceau, un artiste…</string>
+    <string name="home_placeholder">Accueil — suggestions à venir</string>
+    <string name="test_playback_button">Lecture test (valider le pipeline audio)</string>
+    <string name="library_empty">Aucun historique pour l\'instant — les morceaux écoutés apparaîtront ici.</string>
+    <string name="downloads_placeholder">Téléchargements — à venir</string>
+
+    <string name="settings_section_playback">Lecture</string>
+    <string name="settings_sleep_timer">Minuteur de sommeil</string>
+    <string name="settings_off">Désactivé</string>
+    <string name="settings_crossfade_desc">Transition en fondu entre les morceaux (bientôt fonctionnel)</string>
+    <string name="settings_equalizer">Égaliseur</string>
+    <string name="eq_flat">Plat</string>
+    <string name="eq_bass">Bass Boost</string>
+    <string name="eq_treble">Aigus renforcés</string>
+    <string name="eq_vocal">Vocal</string>
+    <string name="settings_section_general">Général</string>
+    <string name="settings_language">Langue</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_reset">Réinitialiser (supprimer toutes les données)</string>
+    <string name="reset_dialog_title">Réinitialiser l\'application ?</string>
+    <string name="reset_dialog_text">Ça supprime toute la bibliothèque, les téléchargements et les playlists, sans possibilité de retour en arrière.</string>
+    <string name="reset_confirm">Réinitialiser</string>
+    <string name="reset_cancel">Annuler</string>
+
+    <string name="download_choice_title">Télécharger ce morceau</string>
+    <string name="download_audio">Audio</string>
+    <string name="download_video">Vidéo</string>
+    <string name="download_started">Téléchargement lancé</string>
+    <string name="download_video_no_audio_warning">Vidéo sans son (fusion audio/vidéo pas encore disponible)</string>
+    <string name="no_stream_found">Impossible de lire ce morceau (aucun flux trouvé).</string>
+    <string name="download_no_stream_found">Téléchargement impossible : aucun flux disponible pour ce morceau.</string>
+    <string name="playback_error_prefix">Lecture impossible : </string>
+
+    <string name="delete_confirm_title">Supprimer ce téléchargement ?</string>
+    <string name="delete_confirm_text">Il sera aussi retiré des playlists hors-ligne qui le contiennent.</string>
+    <string name="delete_action">Supprimer</string>
+    <string name="cancel_action">Annuler</string>
+    <string name="download_deleted">Téléchargement supprimé</string>
+    <string name="download_in_progress">Téléchargement en cours…</string>
+
+    <string name="playlist_favorites">Favoris</string>
+    <string name="playlist_add_title">Ajouter à une playlist</string>
+    <string name="playlist_added">Ajouté à la playlist</string>
+    <string name="playlist_add_blocked">Ce morceau n\'est pas téléchargé — seules les playlists en ligne sont proposées.</string>
+
+    <string name="playlists_title">Playlists</string>
+    <string name="import_button_label">Importer</string>
+    <string name="import_success">Fichiers importés avec succès</string>
+    <string name="playlist_rename">Renommer la playlist</string>
+    <string name="playlist_share">Partager la playlist</string>
+    <string name="playlist_import_url">Importer via URL</string>
+    <string name="playlist_import_hint">Coller l\'URL ou le lien de la playlist</string>
+    <string name="playlists_empty">Aucune playlist pour l\'instant.</string>
+    <string name="playlist_create">Nouvelle playlist</string>
+    <string name="playlist_name_label">Nom de la playlist</string>
+    <string name="playlist_type_online">En ligne (tous les morceaux)</string>
+    <string name="playlist_type_offline">Hors-ligne (téléchargés uniquement)</string>
+    <string name="playlist_create_confirm">Créer</string>
+    <string name="playlist_cancel">Annuler</string>
+    <string name="playlist_empty_tracks">Cette playlist est vide.</string>
+    <string name="playlist_offline_blocked">Ce morceau n\'est pas téléchargé — impossible de l\'ajouter à une playlist hors-ligne.</string>
+    <string name="playlist_name_already_exists">Une playlist porte déjà ce nom.</string>
+    <string name="offline_indicator">Hors ligne</string>
+
+    <string name="home_section_trending_hits">Hits du moment</string>
+    <string name="home_section_trending_artists">Artistes du moment</string>
+    <string name="home_section_your_playlists">Tes playlists</string>
+
+    <string name="settings_section_stats">Statistiques d\'écoute</string>
+    <string name="stats_today">Aujourd\'hui</string>
+    <string name="stats_week">7 derniers jours</string>
+    <string name="stats_month">30 derniers jours</string>
+    <string name="stats_all_time">Tout le temps</string>
+</resources>

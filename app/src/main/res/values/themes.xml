@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Thème "coquille" utilisé par le AndroidManifest / l'activité avant que Compose
+         ne prenne le relais (splash au démarrage, barre système, etc.).
+         Les vraies couleurs de l'app (sombre + vert) sont gérées dans
+         ui/theme/Theme.kt (Compose) — ce style ne sert que le temps du lancement. -->
+    <style name="Theme.SoundFlow" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/ic_launcher_background</item>
+        <item name="android:statusBarColor">@color/ic_launcher_background</item>
+        <item name="android:navigationBarColor">@color/ic_launcher_background</item>
+    </style>
+</resources>

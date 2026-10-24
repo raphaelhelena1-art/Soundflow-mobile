@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- TODO: remplacer par le vrai logo SoundFlow (à récupérer depuis le repo Windows) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path
+        android:fillColor="#1DB954"
+        android:pathData="M54,24 a30,30 0 1,0 0.1,0 z M54,42 a12,12 0 1,1 -0.1,0 z" />
+</vector>

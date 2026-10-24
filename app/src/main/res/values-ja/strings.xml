@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SoundFlow</string>
+
+    <string name="nav_profile">プロフィール</string>
+    <string name="nav_downloads">ダウンロード</string>
+    <string name="nav_playlists">プレイリスト</string>
+    <string name="nav_home">ホーム</string>
+    <string name="nav_search">検索</string>
+    <string name="nav_library">ライブラリ</string>
+
+    <string name="search_hint">曲名やアーティストを検索…</string>
+    <string name="home_placeholder">ホーム — おすすめは近日公開</string>
+    <string name="test_playback_button">再生テスト（音声パイプラインの確認）</string>
+    <string name="library_empty">再生履歴はまだありません。聴いた曲がここに表示されます。</string>
+    <string name="downloads_placeholder">ダウンロード — 近日公開</string>
+
+    <string name="settings_section_playback">再生</string>
+    <string name="settings_sleep_timer">スリープタイマー</string>
+    <string name="settings_off">オフ</string>
+    <string name="settings_crossfade_desc">曲間のフェード移行（近日対応予定）</string>
+    <string name="settings_equalizer">イコライザー</string>
+    <string name="eq_flat">フラット</string>
+    <string name="eq_bass">ベースブースト</string>
+    <string name="eq_treble">トレブルブースト</string>
+    <string name="eq_vocal">ボーカル</string>
+    <string name="settings_section_general">一般</string>
+    <string name="settings_language">言語</string>
+    <string name="settings_version">バージョン</string>
+    <string name="settings_reset">リセット（すべてのデータを削除）</string>
+    <string name="reset_dialog_title">アプリをリセットしますか？</string>
+    <string name="reset_dialog_text">ライブラリ、ダウンロード、プレイリストがすべて削除されます。元に戻せません。</string>
+    <string name="reset_confirm">リセット</string>
+    <string name="reset_cancel">キャンセル</string>
+
+    <string name="download_choice_title">この曲をダウンロード</string>
+    <string name="download_audio">音声</string>
+    <string name="download_video">動画</string>
+    <string name="download_started">ダウンロードを開始しました</string>
+    <string name="download_video_no_audio_warning">音声なしの動画です（音声・動画の結合は未対応）</string>
+    <string name="no_stream_found">この曲は再生できません（ストリームが見つかりません）。</string>
+    <string name="download_no_stream_found">ダウンロードできません：この曲のストリームが見つかりません。</string>
+    <string name="playback_error_prefix">再生できません：</string>
+
+    <string name="delete_confirm_title">このダウンロードを削除しますか？</string>
+    <string name="delete_confirm_text">含まれているオフラインプレイリストからも削除されます。</string>
+    <string name="delete_action">削除</string>
+    <string name="cancel_action">キャンセル</string>
+    <string name="download_deleted">ダウンロードを削除しました</string>
+    <string name="download_in_progress">ダウンロード中…</string>
+
+    <string name="playlist_favorites">お気に入り</string>
+    <string name="playlist_add_title">プレイリストに追加</string>
+    <string name="playlist_added">プレイリストに追加しました</string>
+    <string name="playlist_add_blocked">この曲はダウンロードされていません。オンラインプレイリストのみ表示されます。</string>
+
+    <string name="playlists_title">プレイリスト</string>
+    <string name="import_button_label">インポート</string>
+    <string name="import_success">ファイルを正常にインポートしました</string>
+    <string name="playlist_rename">プレイリスト名を変更</string>
+    <string name="playlist_share">プレイリストを共有</string>
+    <string name="playlist_import_url">URLからインポート</string>
+    <string name="playlist_import_hint">プレイリストのURLまたはリンクを貼り付け</string>
+    <string name="playlists_empty">プレイリストはまだありません。</string>
+    <string name="playlist_create">新しいプレイリスト</string>
+    <string name="playlist_name_label">プレイリスト名</string>
+    <string name="playlist_type_online">オンライン（すべての曲）</string>
+    <string name="playlist_type_offline">オフライン（ダウンロード済みのみ）</string>
+    <string name="playlist_create_confirm">作成</string>
+    <string name="playlist_cancel">キャンセル</string>
+    <string name="playlist_empty_tracks">このプレイリストは空です。</string>
+    <string name="playlist_offline_blocked">この曲はダウンロードされていないため、オフラインプレイリストに追加できません。</string>
+    <string name="playlist_name_already_exists">同じ名前のプレイリストが既に存在します。</string>
+    <string name="offline_indicator">オフライン</string>
+
+    <string name="home_section_trending_hits">トレンドヒット</string>
+    <string name="home_section_trending_artists">トレンドアーティスト</string>
+    <string name="home_section_your_playlists">あなたのプレイリスト</string>
+
+    <string name="settings_section_stats">再生統計</string>
+    <string name="stats_today">今日</string>
+    <string name="stats_week">過去7日間</string>
+    <string name="stats_month">過去30日間</string>
+    <string name="stats_all_time">全期間</string>
+</resources>
