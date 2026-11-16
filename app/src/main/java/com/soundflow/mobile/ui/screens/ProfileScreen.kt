@@ -20,6 +20,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,8 +72,13 @@ fun ProfileScreen(playerViewModel: PlayerViewModel) {
     var selectedSleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
     var selectedLanguage by remember { mutableStateOf(initialLanguage) }
     var selectedEqualizerIndex by remember { mutableStateOf(0) }
-    var crossfadeSeconds by remember { mutableStateOf(0f) }
+    val savedCrossfade by playerViewModel.crossfadeSeconds.collectAsStateWithLifecycle()
+    var crossfadeSeconds by remember(savedCrossfade) { mutableStateOf(savedCrossfade) }
     var showResetConfirmation by remember { mutableStateOf(false) }
+
+    LaunchedEffect(savedCrossfade) {
+        crossfadeSeconds = savedCrossfade
+    }
 
     val sleepTimerLabel = if (selectedSleepTimerMinutes == null) offLabel else "$selectedSleepTimerMinutes min"
 
@@ -103,6 +109,9 @@ fun ProfileScreen(playerViewModel: PlayerViewModel) {
                 Slider(
                     value = crossfadeSeconds,
                     onValueChange = { crossfadeSeconds = it },
+                    onValueChangeFinished = {
+                        playerViewModel.setCrossfadeSeconds(crossfadeSeconds)
+                    },
                     valueRange = 0f..12f,
                     steps = 11,
                 )

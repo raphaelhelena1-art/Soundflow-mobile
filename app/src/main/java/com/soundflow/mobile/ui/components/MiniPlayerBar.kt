@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,9 +47,9 @@ import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
 import com.soundflow.core.player.PlaybackMode
 import com.soundflow.core.player.Track
-import com.soundflow.mobile.downloads.DownloadsViewModel
 import com.soundflow.mobile.player.PlayerViewModel
 import com.soundflow.mobile.playlists.PlaylistsViewModel
+import com.soundflow.mobile.downloads.DownloadsViewModel
 import com.soundflow.mobile.ui.screens.NowPlayingScreen
 
 private val AccentGreen = Color(0xFF1DB954)
@@ -81,10 +80,21 @@ fun MiniPlayerBar(
 
     Surface(tonalElevation = 3.dp, shadowElevation = 4.dp) {
         Column {
-            val progress = if (durationMs > 0) positionMs.toFloat() / durationMs.toFloat() else 0f
-            LinearProgressIndicator(
-                progress = { progress.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
+            WaveformBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                isPlaying = isPlaying,
+                trackId = track.id,
+                barCount = 48,
+                barWidth = 2.dp,
+                barGap = 2.dp,
+                activeColor = AccentGreen,
+                inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                onSeekTo = playerViewModel::seekTo,
             )
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),

@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import com.soundflow.mobile.data.LocalStore
 import com.soundflow.mobile.navigation.SoundFlowNavHost
+import com.soundflow.mobile.spotify.SpotifyAuthChannel
 import com.soundflow.mobile.ui.theme.SoundFlowTheme
 import kotlinx.coroutines.launch
 
@@ -59,6 +60,14 @@ class MainActivity : AppCompatActivity() {
         val action = intent?.action
         val data = intent?.dataString
         val extraText = intent?.getStringExtra(Intent.EXTRA_TEXT)
+
+        val uri = intent?.data
+        if (uri != null && uri.scheme == "soundflow" && uri.host == "spotify-callback") {
+            val code = uri.getQueryParameter("code")
+            if (code != null) {
+                SpotifyAuthChannel.onCodeReceived(code)
+            }
+        }
 
         sharedUrlFromIntent = when {
             data != null && (data.contains("soundflow.app/playlist") || data.contains("soundflow://playlist")) -> data

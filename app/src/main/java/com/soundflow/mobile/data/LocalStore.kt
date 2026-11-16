@@ -3,6 +3,7 @@ package com.soundflow.mobile.data
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.soundflow.mobile.downloads.DownloadRecord
@@ -38,9 +39,15 @@ class LocalStore(private val context: Context) {
         val DOWNLOADED_IDS = stringPreferencesKey("downloaded_ids")
         val LANGUAGE_TAG = stringPreferencesKey("language_tag")
         val LISTENING_LOGS = stringPreferencesKey("listening_logs")
+        val SPOTIFY_CLIENT_ID = stringPreferencesKey("spotify_client_id")
+        val CROSSFADE_SECONDS = floatPreferencesKey("crossfade_seconds")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    val crossfadeSecondsFlow: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CROSSFADE_SECONDS] ?: 0f
+    }
 
     val downloadsFlow: Flow<List<DownloadRecord>> = context.dataStore.data.map { prefs ->
         val raw = prefs[Keys.DOWNLOADS] ?: return@map emptyList()
@@ -93,9 +100,18 @@ class LocalStore(private val context: Context) {
         return regex.find(rawId)?.groupValues?.get(1) ?: rawId.trim()
     }
 
+    suspend fun saveCrossfadeSeconds(seconds: Float) {
+        context.dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds }
+    }
+
     suspend fun loadLanguageTag(): String? = context.dataStore.data.first()[Keys.LANGUAGE_TAG]
     suspend fun saveLanguageTag(tag: String) {
         context.dataStore.edit { it[Keys.LANGUAGE_TAG] = tag }
+    }
+
+    suspend fun loadSpotifyClientId(): String? = context.dataStore.data.first()[Keys.SPOTIFY_CLIENT_ID]
+    suspend fun saveSpotifyClientId(id: String) {
+        context.dataStore.edit { it[Keys.SPOTIFY_CLIENT_ID] = id.trim() }
     }
 
     suspend fun loadPlaylists(): List<Playlist>? = readJson(Keys.PLAYLISTS)
@@ -107,12 +123,16 @@ class LocalStore(private val context: Context) {
     suspend fun loadDownloads(): List<DownloadRecord>? = readJson(Keys.DOWNLOADS)
     suspend fun saveDownloads(downloads: List<DownloadRecord>) = writeJson(Keys.DOWNLOADS, downloads)
 
-    suspend fun markDownloadCompleted(trackId: String, localUri: String) {
+    suspend fun markDownloadCompleted(trackId: String, localUri: String, thumbnailLocalUri: String? = null) {
         val targetId = extractVideoId(trackId)
         val current = loadDownloads().orEmpty()
         val updated = current.map { record ->
             if (extractVideoId(record.id) == targetId || record.id == trackId) {
-                record.copy(localUri = localUri, needsAudioExtraction = false)
+                record.copy(
+                    localUri = localUri,
+                    needsAudioExtraction = false,
+                    thumbnailLocalUri = thumbnailLocalUri ?: record.thumbnailLocalUri,
+                )
             } else {
                 record
             }

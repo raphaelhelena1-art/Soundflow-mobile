@@ -1,5 +1,3 @@
-@file:OptIn(kotlinx.serialization.InternalSerializationApi::class, androidx.media3.common.util.UnstableApi::class)
-
 package com.soundflow.mobile.playlists
 
 import android.app.Application
@@ -7,6 +5,7 @@ import android.content.Context
 import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.util.UnstableApi
 import com.soundflow.core.extraction.DownloadStreams
 import com.soundflow.core.player.Track
 import com.soundflow.mobile.data.LocalStore
@@ -42,6 +41,7 @@ private data class SharedPlaylistPayload(
 )
 
 /** Playlists persistées localement (survit au redémarrage de l'app). */
+@UnstableApi
 class PlaylistsViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
@@ -112,6 +112,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         persistPlaylists()
     }
 
+    @Suppress("unused")
     fun isDownloaded(trackId: String): Boolean = trackId in _downloadedTrackIds.value
 
     /** Renvoie false si une playlist du même nom existe déjà (insensible à la casse). */
@@ -119,6 +120,25 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         val alreadyExists = _playlists.value.any { it.name.equals(name, ignoreCase = true) }
         if (alreadyExists) return false
         _playlists.update { it + Playlist(id = UUID.randomUUID().toString(), name = name, type = type) }
+        persistPlaylists()
+        return true
+    }
+
+    /** Crée une nouvelle playlist contenant directement des morceaux. */
+    fun createPlaylistWithTracks(name: String, tracks: List<Track>, type: PlaylistType = PlaylistType.ONLINE): Boolean {
+        var playlistName = name
+        var counter = 1
+        while (_playlists.value.any { it.name.equals(playlistName, ignoreCase = true) }) {
+            playlistName = "$name ($counter)"
+            counter++
+        }
+        val newPlaylist = Playlist(
+            id = UUID.randomUUID().toString(),
+            name = playlistName,
+            type = type,
+            tracks = tracks,
+        )
+        _playlists.update { it + newPlaylist }
         persistPlaylists()
         return true
     }
@@ -170,6 +190,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         persistPlaylists()
     }
 
+    @Suppress("unused")
     fun moveTrack(playlistId: String, fromIndex: Int, toIndex: Int) {
         _playlists.update { list ->
             list.map { playlist ->
@@ -258,6 +279,43 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                 onResult(true, "Playlist \"$playlistName\" importée avec succès !")
             }.onFailure {
                 onResult(false, "Impossible d'importer la playlist : format invalide.")
+            }
+        }
+    }
+
+    /** Convertit une playlist en ligne en playlist hors ligne et télécharge chaque morceau un par un en version audio. */
+    fun convertToOffline(
+        playlistId: String,
+        context: Context,
+        downloadsViewModel: DownloadsViewModel,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val playlist = _playlists.value.firstOrNull { it.id == playlistId } ?: return@launch
+            if (playlist.type == PlaylistType.OFFLINE) return@launch
+
+            _playlists.update { list ->
+                list.map { if (it.id == playlistId) it.copy(type = PlaylistType.OFFLINE) else it }
+            }
+            persistPlaylists()
+
+            for (track in playlist.tracks) {
+                val isLocal = downloadsViewModel.downloads.value.any {
+                    store.extractVideoId(it.id) == store.extractVideoId(track.id) && it.localUri != null
+                }
+                if (!isLocal) {
+                    performDownload(
+                        context = context,
+                        streams = DownloadStreams(audioUrl = null, videoUrl = null, isVideoCombinedWithAudio = false),
+                        id = track.id,
+                        title = track.title,
+                        artist = track.artist,
+                        artworkUrl = track.artworkUrl,
+                        downloadVideo = false,
+                        downloadsViewModel = downloadsViewModel,
+                        playlistsViewModel = this@PlaylistsViewModel,
+                        onMessage = {},
+                    )
+                }
             }
         }
     }

@@ -141,11 +141,15 @@ class DownloadsViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /** Marque manuellement un téléchargement comme terminé (ex: depuis YoutubeDownloadWorker). */
-    fun onDownloadCompleted(trackId: String, localUri: String) {
+    fun onDownloadCompleted(trackId: String, localUri: String, thumbnailLocalUri: String? = null) {
         _downloads.update { list ->
             list.map { record ->
                 if (record.id == trackId) {
-                    record.copy(localUri = localUri, needsAudioExtraction = false)
+                    record.copy(
+                        localUri = localUri,
+                        needsAudioExtraction = false,
+                        thumbnailLocalUri = thumbnailLocalUri ?: record.thumbnailLocalUri,
+                    )
                 } else {
                     record
                 }

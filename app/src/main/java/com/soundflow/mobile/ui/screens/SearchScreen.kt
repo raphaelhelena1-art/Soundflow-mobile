@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -145,7 +148,7 @@ fun SearchScreen(
 
             // Historique de recherche : visible tant que le champ est vide, disparaît dès qu'on tape.
             if (state.query.isBlank() && state.history.isNotEmpty()) {
-                Column {
+                Column(modifier = Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
                     state.history.forEach { entry ->
                         Row(
                             modifier = Modifier
@@ -175,8 +178,8 @@ fun SearchScreen(
                             )
                         }
                     }
-                    HorizontalDivider()
                 }
+                HorizontalDivider()
             }
 
             if (state.suggestions.isNotEmpty()) {
@@ -219,6 +222,11 @@ fun SearchScreen(
                 else -> LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(state.results, key = { it.id }) { result ->
                         val isCurrentTrack = playerState.currentTrack?.id == result.id
+                        val store = remember { com.soundflow.mobile.data.LocalStore(context) }
+                        val targetId = store.extractVideoId(result.id)
+                        val isVideoDownloaded = downloads.any { store.extractVideoId(it.id) == targetId && it.localUri != null && !it.isAudio }
+                        val isAudioDownloaded = downloads.any { store.extractVideoId(it.id) == targetId && it.localUri != null && it.isAudio }
+                        val isDownloadInProgress = downloads.any { it.id == result.id && it.localUri == null }
                         SearchResultRow(
                             result = result,
                             isCurrentTrack = isCurrentTrack,
@@ -227,8 +235,8 @@ fun SearchScreen(
                             isFavorite = playlistsViewModel.isFavorite(result.id),
                             isLoadingFavorite = loadingFavoriteId == result.id,
                             isLoadingAdd = loadingAddId == result.id,
-                            isDownloaded = downloads.any { it.id == result.id && it.localUri != null },
-                            isDownloadInProgress = downloads.any { it.id == result.id && it.localUri == null },
+                            isVideoDownloaded = isVideoDownloaded,
+                            isDownloadInProgress = isDownloadInProgress,
                             onPlayClick = {
                                 if (isCurrentTrack) {
                                     playerViewModel.togglePlayPause()
@@ -271,7 +279,17 @@ fun SearchScreen(
                                     }
                                 }
                             },
-                            onDownloadClick = { pendingDownload = result },
+                            onDownloadClick = {
+                                when {
+                                    isVideoDownloaded -> pendingDelete = result
+                                    isAudioDownloaded -> {
+                                        coroutineScope.launch {
+                                            startDownload(context, viewModel, playlistsViewModel, downloadsViewModel, result, downloadVideo = true, snackbarHostState)
+                                        }
+                                    }
+                                    else -> pendingDownload = result
+                                }
+                            },
                             onDeleteDownloadClick = { pendingDelete = result },
                             onAddClick = { pendingPlaylistPicker = result },
                         )
@@ -433,7 +451,7 @@ private fun SearchResultRow(
     isFavorite: Boolean,
     isLoadingFavorite: Boolean,
     isLoadingAdd: Boolean,
-    isDownloaded: Boolean,
+    isVideoDownloaded: Boolean,
     isDownloadInProgress: Boolean,
     onPlayClick: () -> Unit,
     onFavoriteClick: () -> Unit,
@@ -508,11 +526,11 @@ private fun SearchResultRow(
         if (isDownloadInProgress) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(8.dp))
         } else {
-            IconButton(onClick = if (isDownloaded) onDeleteDownloadClick else onDownloadClick) {
+            IconButton(onClick = onDownloadClick) {
                 Icon(
-                    imageVector = if (isDownloaded) Icons.Filled.Delete else Icons.Filled.Download,
-                    contentDescription = if (isDownloaded) "Supprimer le téléchargement" else "Télécharger",
-                    tint = if (isDownloaded) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                    imageVector = if (isVideoDownloaded) Icons.Filled.Delete else Icons.Filled.Download,
+                    contentDescription = if (isVideoDownloaded) "Supprimer le téléchargement" else "Télécharger",
+                    tint = if (isVideoDownloaded) MaterialTheme.colorScheme.error else LocalContentColor.current,
                 )
             }
         }

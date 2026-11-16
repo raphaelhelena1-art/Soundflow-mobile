@@ -1,13 +1,17 @@
 package com.soundflow.mobile.ui.screens
 
 import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,16 +22,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -52,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import com.soundflow.mobile.R
 import com.soundflow.mobile.downloads.DownloadsViewModel
@@ -59,6 +69,7 @@ import com.soundflow.mobile.player.PlayerViewModel
 import com.soundflow.mobile.playlists.Playlist
 import com.soundflow.mobile.playlists.PlaylistType
 import com.soundflow.mobile.playlists.PlaylistsViewModel
+import com.soundflow.mobile.spotify.SpotifyViewModel
 import com.soundflow.mobile.ui.components.NumberedTrackRow
 import kotlinx.coroutines.launch
 
@@ -78,6 +89,7 @@ fun PlaylistsScreen(
     var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var playlistToRename by remember { mutableStateOf<Playlist?>(null) }
 
     val pendingOpenId by viewModel.pendingOpenPlaylistId.collectAsStateWithLifecycle()
@@ -108,6 +120,9 @@ fun PlaylistsScreen(
             currentTrackId = playerState.currentTrack?.id,
             isCurrentPlaying = playerState.isPlaying,
             isBuffering = playerState.isBuffering,
+            downloadsViewModel = downloadsViewModel,
+            playlistsViewModel = viewModel,
+            snackbarHostState = snackbarHostState,
             onBack = { selectedPlaylistId = null },
             onRename = { playlistToRename = selectedPlaylist },
             onShare = { sharePlaylist(selectedPlaylist) },
@@ -123,6 +138,9 @@ fun PlaylistsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.playlists_title)) },
                 actions = {
+                    TextButton(onClick = { showSpotifyImportDialog = true }) {
+                        Text("Spotify", color = Color(0xFF1DB954))
+                    }
                     IconButton(onClick = { showImportDialog = true }) {
                         Icon(Icons.Filled.Link, contentDescription = stringResource(R.string.playlist_import_url))
                     }
@@ -181,6 +199,13 @@ fun PlaylistsScreen(
                     }
                 }
             },
+        )
+    }
+
+    if (showSpotifyImportDialog) {
+        SpotifyImportDialog(
+            playlistsViewModel = viewModel,
+            onDismiss = { showSpotifyImportDialog = false },
         )
     }
 
@@ -397,12 +422,16 @@ private fun ImportPlaylistDialog(onDismiss: () -> Unit, onImport: (String) -> Un
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
 @Composable
 private fun PlaylistDetailScreen(
     playlist: Playlist,
     currentTrackId: String?,
     isCurrentPlaying: Boolean,
     isBuffering: Boolean,
+    downloadsViewModel: DownloadsViewModel?,
+    playlistsViewModel: PlaylistsViewModel,
+    snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onRename: () -> Unit,
     onShare: () -> Unit,
@@ -411,6 +440,8 @@ private fun PlaylistDetailScreen(
     onTogglePlayPause: () -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     val numbered = playlist.tracks.mapIndexed { index, track -> index to track }
     val visible = if (query.isBlank()) {
@@ -433,6 +464,16 @@ private fun PlaylistDetailScreen(
                     }
                 },
                 actions = {
+                    if (playlist.type == PlaylistType.ONLINE && downloadsViewModel != null) {
+                        IconButton(onClick = {
+                            playlistsViewModel.convertToOffline(playlist.id, context, downloadsViewModel)
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Playlist passée en mode hors ligne, téléchargement en cours...")
+                            }
+                        }) {
+                            Icon(Icons.Filled.Download, contentDescription = "Rendre hors ligne")
+                        }
+                    }
                     IconButton(onClick = onShare) {
                         Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.playlist_share))
                     }
@@ -486,4 +527,171 @@ private fun PlaylistDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SpotifyImportDialog(
+    playlistsViewModel: PlaylistsViewModel,
+    onDismiss: () -> Unit,
+    spotifyViewModel: SpotifyViewModel = viewModel(),
+) {
+    val context = LocalContext.current
+    val state by spotifyViewModel.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        if (state.isAuthenticated && state.playlists.isEmpty()) {
+            spotifyViewModel.loadPlaylists()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!state.isImporting) {
+                spotifyViewModel.clearMessages()
+                onDismiss()
+            }
+        },
+        title = { Text("Importer de Spotify") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                when {
+                    state.isImporting -> {
+                        Text(
+                            text = "Importation en cours...",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = state.currentImportingTrackName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        val progress = if (state.importTotal > 0) state.importProgress.toFloat() / state.importTotal else 0f
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "${state.importProgress} / ${state.importTotal} morceau(x)",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    !state.isAuthenticated -> {
+                        var inputClientId by remember { mutableStateOf(state.clientId) }
+                        Text(
+                            text = "Connectez-vous à votre compte Spotify pour importer vos playlists publiques ou privées.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = inputClientId,
+                            onValueChange = {
+                                inputClientId = it
+                                spotifyViewModel.setClientId(it)
+                            },
+                            label = { Text("Client ID Spotify") },
+                            placeholder = { Text("Entrez votre Client ID Spotify") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = "Pour obtenir un Client ID gratuit : developer.spotify.com/dashboard -> Créer une app -> Redirect URI : soundflow://spotify-callback",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                val url = spotifyViewModel.getAuthorizationUrl(inputClientId)
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            },
+                            enabled = inputClientId.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Se connecter à Spotify")
+                        }
+                    }
+                    state.isLoadingPlaylists -> {
+                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    state.playlists.isEmpty() -> {
+                        Text("Aucune playlist trouvée sur votre compte Spotify.")
+                    }
+                    else -> {
+                        Text(
+                            text = "Sélectionnez une playlist à importer :",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                        LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
+                            items(state.playlists, key = { it.id }) { playlist ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = playlist.name,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = "${playlist.tracks?.total ?: 0} morceau(x)",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            spotifyViewModel.importPlaylist(playlist, playlistsViewModel)
+                                        },
+                                    ) {
+                                        Text("Importer")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                state.errorMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+
+                state.importSuccessMessage?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = Color(0xFF1DB954),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (!state.isImporting) {
+                TextButton(onClick = {
+                    spotifyViewModel.clearMessages()
+                    onDismiss()
+                }) {
+                    Text("Fermer")
+                }
+            }
+        },
+    )
 }

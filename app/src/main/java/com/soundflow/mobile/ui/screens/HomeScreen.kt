@@ -127,14 +127,17 @@ fun HomeScreen(
                         ) {
                             items(state.items, key = { it.id }) { result ->
                                 val isCurrentTrack = playerState.currentTrack?.id == result.id
-                                val isDownloaded = downloads.any { it.id == result.id && it.localUri != null }
+                                val store = remember { com.soundflow.mobile.data.LocalStore(context) }
+                                val targetId = store.extractVideoId(result.id)
+                                val isVideoDownloaded = downloads.any { store.extractVideoId(it.id) == targetId && it.localUri != null && !it.isAudio }
+                                val isAudioDownloaded = downloads.any { store.extractVideoId(it.id) == targetId && it.localUri != null && it.isAudio }
                                 val isDownloadInProgress = downloads.any { it.id == result.id && it.localUri == null }
                                 TrendingCard(
                                     result = result,
                                     isCurrentTrack = isCurrentTrack,
                                     isPlaying = isCurrentTrack && playerState.isPlaying,
                                     isLoadingPlay = loadingPlayId == result.id,
-                                    isDownloaded = isDownloaded,
+                                    isVideoDownloaded = isVideoDownloaded,
                                     isDownloadInProgress = isDownloadInProgress,
                                     onPlayClick = {
                                         if (isCurrentTrack) {
@@ -154,7 +157,17 @@ fun HomeScreen(
                                             }
                                         }
                                     },
-                                    onDownloadClick = { pendingDownload = result },
+                                    onDownloadClick = {
+                                        when {
+                                            isVideoDownloaded -> pendingDelete = result
+                                            isAudioDownloaded -> {
+                                                coroutineScope.launch {
+                                                    downloadFromHome(context, viewModel, downloadsViewModel, playlistsViewModel, result, downloadVideo = true, snackbarHostState)
+                                                }
+                                            }
+                                            else -> pendingDownload = result
+                                        }
+                                    },
                                     onDeleteDownloadClick = { pendingDelete = result },
                                     onAddClick = { pendingAdd = result },
                                 )
@@ -334,7 +347,7 @@ private fun TrendingCard(
     isCurrentTrack: Boolean,
     isPlaying: Boolean,
     isLoadingPlay: Boolean,
-    isDownloaded: Boolean,
+    isVideoDownloaded: Boolean,
     isDownloadInProgress: Boolean,
     onPlayClick: () -> Unit,
     onDownloadClick: () -> Unit,
@@ -399,11 +412,11 @@ private fun TrendingCard(
             if (isDownloadInProgress) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp).padding(8.dp))
             } else {
-                IconButton(onClick = if (isDownloaded) onDeleteDownloadClick else onDownloadClick, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = onDownloadClick, modifier = Modifier.size(32.dp)) {
                     Icon(
-                        imageVector = if (isDownloaded) Icons.Filled.Delete else Icons.Filled.Download,
+                        imageVector = if (isVideoDownloaded) Icons.Filled.Delete else Icons.Filled.Download,
                         contentDescription = null,
-                        tint = if (isDownloaded) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                        tint = if (isVideoDownloaded) MaterialTheme.colorScheme.error else LocalContentColor.current,
                         modifier = Modifier.size(16.dp),
                     )
                 }

@@ -1,6 +1,5 @@
 package com.soundflow.mobile.ui.screens
 
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,11 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.MusicNote
@@ -32,18 +32,15 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,7 +55,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,7 +63,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
-import com.soundflow.core.extraction.YouTubeRepository
 import com.soundflow.core.lyrics.LyricsRepository
 import com.soundflow.core.lyrics.LyricsResult
 import com.soundflow.core.lyrics.parseSyncedLyrics
@@ -75,12 +70,12 @@ import com.soundflow.core.player.PlaybackMode
 import com.soundflow.core.player.Track
 import com.soundflow.mobile.R
 import com.soundflow.mobile.downloads.DownloadsViewModel
-import com.soundflow.mobile.downloads.performDownload
 import com.soundflow.mobile.player.PlayerViewModel
 import com.soundflow.mobile.playlists.PlaylistType
 import com.soundflow.mobile.playlists.PlaylistsViewModel
 import com.soundflow.mobile.ui.components.PlaylistPickerDialog
 import com.soundflow.mobile.ui.components.VideoSurface
+import com.soundflow.mobile.ui.components.WaveformBar
 import kotlinx.coroutines.launch
 
 private val AccentGreen = Color(0xFF1DB954)
@@ -103,11 +98,10 @@ fun NowPlayingScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showDownloadDialog by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
-    var isDownloading by remember { mutableStateOf(false) }
     var isAdding by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
+    var isFullscreenVideo by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -120,8 +114,6 @@ fun NowPlayingScreen(
                     Spacer(Modifier.height(8.dp))
 
                     // Grande image (ou vidéo si disponible), en haut.
-                    // Réduite quand les paroles sont affichées : sinon il ne reste presque plus
-                    // de place pour le contenu en dessous.
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -131,8 +123,24 @@ fun NowPlayingScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         when {
-                            track.hasVideo && player != null ->
-                                VideoSurface(player = player, useController = false, modifier = Modifier.fillMaxSize())
+                            track.hasVideo && player != null -> {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    VideoSurface(player = player, useController = false, modifier = Modifier.fillMaxSize())
+                                    IconButton(
+                                        onClick = { isFullscreenVideo = true },
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(8.dp)
+                                            .background(Color.Black.copy(alpha = 0.6f), shape = CircleShape),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Fullscreen,
+                                            contentDescription = "Plein écran",
+                                            tint = Color.White,
+                                        )
+                                    }
+                                }
+                            }
                             track.artworkUrl != null -> key(track.id) {
                                 AsyncImage(
                                     model = track.artworkUrl,
@@ -152,7 +160,7 @@ fun NowPlayingScreen(
 
                     Spacer(Modifier.height(20.dp))
 
-                    // Titre/auteur à gauche, téléchargement + ajout à droite, au même niveau.
+                    // Titre/auteur à gauche, ajout à droite, au même niveau.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(track.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -164,13 +172,6 @@ fun NowPlayingScreen(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        if (isDownloading) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(end = 8.dp))
-                        } else {
-                            IconButton(onClick = { showDownloadDialog = true }) {
-                                Icon(Icons.Filled.Download, contentDescription = null)
-                            }
-                        }
                         if (isAdding) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
                         } else {
@@ -178,8 +179,7 @@ fun NowPlayingScreen(
                                 Icon(Icons.Filled.Add, contentDescription = null)
                             }
                         }
-                        // Bouton dédié pour les paroles — plus fiable qu'un tap sur l'image,
-                        // qui pouvait sembler ne pas répondre au premier essai.
+                        // Bouton dédié pour les paroles.
                         IconButton(onClick = { showLyrics = !showLyrics }) {
                             Icon(
                                 Icons.Filled.Lyrics,
@@ -191,24 +191,25 @@ fun NowPlayingScreen(
 
                     Spacer(Modifier.height(16.dp))
 
-                    // Barre de lecture avec les temps.
-                    var isDragging by remember { mutableStateOf(false) }
-                    var dragPositionMs by remember { mutableStateOf(0L) }
-                    val displayedPositionMs = if (isDragging) dragPositionMs else playerState.positionMs
-                    Slider(
-                        value = displayedPositionMs.toFloat(),
-                        onValueChange = {
-                            isDragging = true
-                            dragPositionMs = it.toLong()
-                        },
-                        onValueChangeFinished = {
-                            playerViewModel.seekTo(dragPositionMs)
-                            isDragging = false
-                        },
-                        valueRange = 0f..playerState.durationMs.coerceAtLeast(1L).toFloat(),
+                    // Barre de lecture avec les temps sous forme d'onde sonore (Waveform).
+                    WaveformBar(
+                        positionMs = playerState.positionMs,
+                        durationMs = playerState.durationMs,
+                        isPlaying = playerState.isPlaying,
+                        trackId = track.id,
+                        barCount = 42,
+                        barWidth = 3.dp,
+                        barGap = 3.dp,
+                        activeColor = AccentGreen,
+                        inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .padding(vertical = 4.dp),
+                        onSeekTo = playerViewModel::seekTo,
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(formatTime(displayedPositionMs), style = MaterialTheme.typography.bodySmall)
+                        Text(formatTime(playerState.positionMs), style = MaterialTheme.typography.bodySmall)
                         Text(formatTime(playerState.durationMs), style = MaterialTheme.typography.bodySmall)
                     }
 
@@ -276,32 +277,36 @@ fun NowPlayingScreen(
         }
     }
 
-    if (showDownloadDialog) {
-        AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            title = { Text(stringResource(R.string.download_choice_title)) },
-            text = {},
-            confirmButton = {
-                TextButton(onClick = {
-                    showDownloadDialog = false
-                    isDownloading = true
-                    coroutineScope.launch {
-                        downloadTrack(context, track, downloadVideo = false, downloadsViewModel, playlistsViewModel, snackbarHostState)
-                        isDownloading = false
-                    }
-                }) { Text(stringResource(R.string.download_audio)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    showDownloadDialog = false
-                    isDownloading = true
-                    coroutineScope.launch {
-                        downloadTrack(context, track, downloadVideo = true, downloadsViewModel, playlistsViewModel, snackbarHostState)
-                        isDownloading = false
-                    }
-                }) { Text(stringResource(R.string.download_video)) }
-            },
-        )
+    if (isFullscreenVideo && player != null) {
+        Dialog(
+            onDismissRequest = { isFullscreenVideo = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            ) {
+                VideoSurface(
+                    player = player,
+                    useController = true,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                IconButton(
+                    onClick = { isFullscreenVideo = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), shape = CircleShape),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Fermer plein écran",
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
     }
 
     if (showAddDialog) {
@@ -323,33 +328,6 @@ fun NowPlayingScreen(
                 }
             },
         )
-    }
-}
-
-private suspend fun downloadTrack(
-    context: Context,
-    track: Track,
-    downloadVideo: Boolean,
-    downloadsViewModel: DownloadsViewModel,
-    playlistsViewModel: PlaylistsViewModel,
-    snackbarHostState: SnackbarHostState,
-) {
-    try {
-        val streams = YouTubeRepository().getDownloadStreams(track.id)
-        performDownload(
-            context = context,
-            streams = streams,
-            id = track.id,
-            title = track.title,
-            artist = track.artist,
-            artworkUrl = track.artworkUrl,
-            downloadVideo = downloadVideo,
-            downloadsViewModel = downloadsViewModel,
-            playlistsViewModel = playlistsViewModel,
-            onMessage = { resId -> snackbarHostState.showSnackbar(context.getString(resId)) },
-        )
-    } catch (e: Exception) {
-        snackbarHostState.showSnackbar("${context.getString(R.string.playback_error_prefix)}${e.message ?: e.javaClass.simpleName}")
     }
 }
 
@@ -379,7 +357,6 @@ private fun LyricsSection(track: Track, positionMs: Long, modifier: Modifier = M
     }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        // La "barre" : bascule entre paroles brutes (à gauche) et karaoké (à droite).
         Row(modifier = Modifier.fillMaxWidth()) {
             SegmentButton(
                 text = "Paroles",
@@ -456,7 +433,6 @@ private fun PlainLyricsView(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun KaraokeLyricsView(syncedLyrics: String?, plainLyrics: String?, positionMs: Long, modifier: Modifier = Modifier) {
     if (syncedLyrics == null) {
-        // Pas de version synchronisée disponible : repli sur les paroles brutes.
         PlainLyricsView(text = plainLyrics.orEmpty(), modifier = modifier)
         return
     }
@@ -469,8 +445,6 @@ private fun KaraokeLyricsView(syncedLyrics: String?, plainLyrics: String?, posit
 
     LaunchedEffect(currentIndex) {
         if (currentIndex >= 0) {
-            // On centre la ligne courante plutôt que de la coller en haut, pour qu'elle reste
-            // toujours bien visible dans la zone (avant, ça pouvait la pousser hors de vue).
             listState.animateScrollToItem((currentIndex - 1).coerceAtLeast(0))
         }
     }

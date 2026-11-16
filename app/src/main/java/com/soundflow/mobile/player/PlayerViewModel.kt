@@ -38,12 +38,24 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         initialValue = ListeningStats(),
     )
 
+    val crossfadeSeconds: StateFlow<Float> = store.crossfadeSecondsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = 0f,
+    )
+
     // Historique d'écoute — session uniquement pour l'instant.
     private val _history = MutableStateFlow<List<Track>>(emptyList())
     val history: StateFlow<List<Track>> = _history.asStateFlow()
 
     init {
         controller.connect()
+
+        viewModelScope.launch {
+            store.crossfadeSecondsFlow.collect { sec ->
+                controller.setCrossfadeSeconds(sec)
+            }
+        }
 
         // Enregistre en continu le temps d'écoute effectif quand la musique tourne
         viewModelScope.launch {
@@ -77,6 +89,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun clearError() = controller.clearError()
 
     fun setSleepTimer(durationMs: Long?) = controller.setSleepTimer(durationMs)
+
+    fun setCrossfadeSeconds(seconds: Float) {
+        controller.setCrossfadeSeconds(seconds)
+        viewModelScope.launch { store.saveCrossfadeSeconds(seconds) }
+    }
 
     fun applyEqualizerPreset(preset: EqualizerPreset) = controller.applyEqualizerPreset(preset)
 

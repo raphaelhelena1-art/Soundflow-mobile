@@ -79,6 +79,15 @@ class PlayerController(private val context: Context) {
             }
         }
 
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val controller = mediaController ?: return
+            val newIndex = controller.currentMediaItemIndex
+            if (newIndex in queue.indices && newIndex != currentIndex) {
+                currentIndex = newIndex
+                _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
+            }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             val message = error.cause?.message ?: error.message ?: error.errorCodeName
             _state.update { it.copy(isPlaying = false, isBuffering = false, errorMessage = message) }
@@ -112,22 +121,60 @@ class PlayerController(private val context: Context) {
         playCurrentQueueItem()
     }
 
+    private val _crossfadeSeconds = MutableStateFlow(0f)
+    val crossfadeSeconds: StateFlow<Float> = _crossfadeSeconds.asStateFlow()
+
+    fun setCrossfadeSeconds(seconds: Float) {
+        _crossfadeSeconds.value = seconds
+    }
+
+    private fun performCrossfadeAndSwitch(switchAction: () -> Unit) {
+        val controller = mediaController ?: run { switchAction(); return }
+        val fadeSec = _crossfadeSeconds.value
+        if (fadeSec <= 0f) {
+            switchAction()
+            return
+        }
+        scope.launch {
+            val fadeHalfMs = ((fadeSec * 1000f) / 2f).toLong().coerceAtLeast(100L)
+            val steps = 10
+            val stepDelay = (fadeHalfMs / steps).coerceAtLeast(10L)
+            for (i in steps downTo 0) {
+                controller.volume = i.toFloat() / steps
+                delay(stepDelay)
+            }
+            switchAction()
+            controller.volume = 0f
+            for (i in 1..steps) {
+                controller.volume = i.toFloat() / steps
+                delay(stepDelay)
+            }
+            controller.volume = 1f
+        }
+    }
+
     fun skipToNext() {
         if (queue.size <= 1) return
-        currentIndex = nextIndex()
-        playCurrentQueueItem()
+        performCrossfadeAndSwitch {
+            currentIndex = nextIndex()
+            playCurrentQueueItem()
+        }
     }
 
     fun skipToPrevious() {
         if (queue.size <= 1) return
-        currentIndex = previousIndex()
-        playCurrentQueueItem()
+        performCrossfadeAndSwitch {
+            currentIndex = previousIndex()
+            playCurrentQueueItem()
+        }
     }
 
     private fun playCurrentQueueItem() {
         val track = queue.getOrNull(currentIndex) ?: return
         val controller = mediaController ?: return
-        controller.setMediaItem(buildMediaItem(track))
+        val items = queue.map { buildMediaItem(it) }
+        controller.repeatMode = if (queue.size > 1) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        controller.setMediaItems(items, currentIndex, 0L)
         controller.prepare()
         controller.play()
         _state.update { it.copy(currentTrack = track, errorMessage = null) }
@@ -207,8 +254,10 @@ class PlayerController(private val context: Context) {
         when (_playbackMode.value) {
             PlaybackMode.REPEAT_ONE -> playCurrentQueueItem()
             PlaybackMode.REPEAT_ALL -> {
-                currentIndex = nextIndex()
-                playCurrentQueueItem()
+                performCrossfadeAndSwitch {
+                    currentIndex = nextIndex()
+                    playCurrentQueueItem()
+                }
             }
             PlaybackMode.SEQUENTIAL, PlaybackMode.SHUFFLE -> {
                 val isLast = if (_playbackMode.value == PlaybackMode.SHUFFLE && shuffleOrder.isNotEmpty()) {
@@ -217,8 +266,10 @@ class PlayerController(private val context: Context) {
                     currentIndex >= queue.size - 1
                 }
                 if (!isLast) {
-                    currentIndex = nextIndex()
-                    playCurrentQueueItem()
+                    performCrossfadeAndSwitch {
+                        currentIndex = nextIndex()
+                        playCurrentQueueItem()
+                    }
                 }
             }
         }

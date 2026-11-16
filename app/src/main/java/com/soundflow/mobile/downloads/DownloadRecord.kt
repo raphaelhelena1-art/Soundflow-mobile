@@ -17,4 +17,6 @@ data class DownloadRecord(
     /** Vrai si ce téléchargement est en réalité une vidéo (avec image) dont il faut extraire
      * l'audio une fois terminée — cas où YouTube ne fournit pas de flux audio seul. */
     val needsAudioExtraction: Boolean = false,
+    /** URI locale de la miniature téléchargée. */
+    val thumbnailLocalUri: String? = null,
 )

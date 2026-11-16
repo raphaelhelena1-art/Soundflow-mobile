@@ -18,7 +18,7 @@
     <string name="settings_section_playback">Playback</string>
     <string name="settings_sleep_timer">Sleep timer</string>
     <string name="settings_off">Off</string>
-    <string name="settings_crossfade_desc">Fade transition between songs (coming soon)</string>
+    <string name="settings_crossfade_desc">Fade transition between songs</string>
     <string name="settings_equalizer">Equalizer</string>
     <string name="eq_flat">Flat</string>
     <string name="eq_bass">Bass Boost</string>
@@ -72,6 +72,8 @@
     <string name="playlist_offline_blocked">This song isn\'t downloaded — it can\'t be added to an offline playlist.</string>
     <string name="playlist_name_already_exists">A playlist with this name already exists.</string>
     <string name="offline_indicator">Offline</string>
+    <string name="connection_lost">Internet connection lost</string>
+    <string name="connection_restored">Internet connection restored</string>
 
     <string name="home_section_trending_hits">Trending Hits</string>
     <string name="home_section_trending_artists">Trending Artists</string>

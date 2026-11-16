@@ -18,7 +18,7 @@
     <string name="settings_section_playback">Lecture</string>
     <string name="settings_sleep_timer">Minuteur de sommeil</string>
     <string name="settings_off">Désactivé</string>
-    <string name="settings_crossfade_desc">Transition en fondu entre les morceaux (bientôt fonctionnel)</string>
+    <string name="settings_crossfade_desc">Transition en fondu entre les morceaux</string>
     <string name="settings_equalizer">Égaliseur</string>
     <string name="eq_flat">Plat</string>
     <string name="eq_bass">Bass Boost</string>
@@ -72,6 +72,8 @@
     <string name="playlist_offline_blocked">Ce morceau n\'est pas téléchargé — impossible de l\'ajouter à une playlist hors-ligne.</string>
     <string name="playlist_name_already_exists">Une playlist porte déjà ce nom.</string>
     <string name="offline_indicator">Hors ligne</string>
+    <string name="connection_lost">Connexion Internet perdue</string>
+    <string name="connection_restored">Connexion Internet rétablie</string>
 
     <string name="home_section_trending_hits">Hits du moment</string>
     <string name="home_section_trending_artists">Artistes du moment</string>

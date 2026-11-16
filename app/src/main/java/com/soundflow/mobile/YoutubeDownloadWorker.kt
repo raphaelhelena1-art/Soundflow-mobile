@@ -65,11 +65,13 @@ class YoutubeDownloadWorker(
             }
 
             var downloadedFile = findDownloadedFile(soundFlowDir, safeName, extension)
+            val artworkUrl = inputData.getString("ARTWORK_URL")
+            val thumbnailLocalUri = downloadThumbnail(artworkUrl, soundFlowDir, safeName)
 
             if (downloadedFile != null) {
                 Log.d("SoundFlow", "Téléchargement yt-dlp réussi pour : $title -> ${downloadedFile.absolutePath}")
                 val fileUri = Uri.fromFile(downloadedFile).toString()
-                store.markDownloadCompleted(trackId, fileUri)
+                store.markDownloadCompleted(trackId, fileUri, thumbnailLocalUri)
                 return@withContext Result.success()
             }
 
@@ -81,7 +83,7 @@ class YoutubeDownloadWorker(
             if (okHttpSuccess && downloadedFile != null) {
                 Log.d("SoundFlow", "Téléchargement OkHttp réussi pour : $title -> ${downloadedFile.absolutePath}")
                 val fileUri = Uri.fromFile(downloadedFile).toString()
-                store.markDownloadCompleted(trackId, fileUri)
+                store.markDownloadCompleted(trackId, fileUri, thumbnailLocalUri)
                 Result.success()
             } else {
                 Log.e("SoundFlow", "Tous les modes de téléchargement ont échoué pour : $title")
@@ -89,6 +91,32 @@ class YoutubeDownloadWorker(
                 Result.failure()
             }
         }
+    }
+
+    private fun downloadThumbnail(artworkUrl: String?, soundFlowDir: File, safeName: String): String? {
+        if (artworkUrl.isNullOrBlank()) return null
+        return runCatching {
+            val thumbFile = File(soundFlowDir, "$safeName.jpg")
+            if (thumbFile.exists() && thumbFile.length() > 0) {
+                return@runCatching Uri.fromFile(thumbFile).toString()
+            }
+            val client = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+            val request = OkHttpRequest.Builder().url(artworkUrl).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching null
+                val body = response.body ?: return@runCatching null
+                body.byteStream().use { input ->
+                    thumbFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+            if (thumbFile.exists() && thumbFile.length() > 0) {
+                Uri.fromFile(thumbFile).toString()
+            } else {
+                null
+            }
+        }.getOrNull()
     }
 
     private fun findDownloadedFile(directory: File, safeName: String, extension: String): File? {

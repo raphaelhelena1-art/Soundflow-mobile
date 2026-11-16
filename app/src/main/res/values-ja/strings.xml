@@ -18,7 +18,7 @@
     <string name="settings_section_playback">再生</string>
     <string name="settings_sleep_timer">スリープタイマー</string>
     <string name="settings_off">オフ</string>
-    <string name="settings_crossfade_desc">曲間のフェード移行（近日対応予定）</string>
+    <string name="settings_crossfade_desc">曲間のフェード移行</string>
     <string name="settings_equalizer">イコライザー</string>
     <string name="eq_flat">フラット</string>
     <string name="eq_bass">ベースブースト</string>
@@ -72,6 +72,8 @@
     <string name="playlist_offline_blocked">この曲はダウンロードされていないため、オフラインプレイリストに追加できません。</string>
     <string name="playlist_name_already_exists">同じ名前のプレイリストが既に存在します。</string>
     <string name="offline_indicator">オフライン</string>
+    <string name="connection_lost">インターネット接続が失われました</string>
+    <string name="connection_restored">インターネット接続が復元されました</string>
 
     <string name="home_section_trending_hits">トレンドヒット</string>
     <string name="home_section_trending_artists">トレンドアーティスト</string>
