@@ -1,5 +1,11 @@
 package com.soundflow.core.player
 
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -22,8 +28,27 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
+    private val audioNoisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val action = intent?.action
+            if (action == AudioManager.ACTION_AUDIO_BECOMING_NOISY || action == BluetoothDevice.ACTION_ACL_DISCONNECTED) {
+                mediaSession?.player?.let { player ->
+                    if (player.isPlaying) {
+                        player.pause()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+
+        val filter = IntentFilter().apply {
+            addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        runCatching { registerReceiver(audioNoisyReceiver, filter) }
 
         // Les URLs de flux YouTube (googlevideo.com) sont sensibles au User-Agent utilisé
         // pour les requêtes : si ExoPlayer utilise un User-Agent différent de celui qui a
@@ -47,9 +72,8 @@ class PlaybackService : MediaSessionService() {
 
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
-            .build().apply {
-                repeatMode = Player.REPEAT_MODE_ALL
-            }
+            .setHandleAudioBecomingNoisy(true)
+            .build()
 
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -90,7 +114,20 @@ class PlaybackService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        mediaSession?.player?.let { player ->
+            if (player.isPlaying) {
+                player.pause()
+            }
+            player.stop()
+            player.clearMediaItems()
+        }
+        stopSelf()
+    }
+
     override fun onDestroy() {
+        runCatching { unregisterReceiver(audioNoisyReceiver) }
         loudnessEnhancer?.run {
             runCatching { release() }
             loudnessEnhancer = null

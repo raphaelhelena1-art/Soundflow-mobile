@@ -49,6 +49,14 @@ class LocalStore(private val context: Context) {
         prefs[Keys.CROSSFADE_SECONDS] ?: 0f
     }
 
+    companion object {
+        private val dateFormatThreadLocal = ThreadLocal.withInitial {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        }
+
+        private fun getDateFormat(): SimpleDateFormat = dateFormatThreadLocal.get()!!
+    }
+
     val downloadsFlow: Flow<List<DownloadRecord>> = context.dataStore.data.map { prefs ->
         val raw = prefs[Keys.DOWNLOADS] ?: return@map emptyList()
         runCatching { json.decodeFromString<List<DownloadRecord>>(raw) }.getOrDefault(emptyList())
@@ -58,7 +66,7 @@ class LocalStore(private val context: Context) {
         val raw = prefs[Keys.LISTENING_LOGS] ?: return@map ListeningStats()
         val logs = runCatching { json.decodeFromString<Map<String, Long>>(raw) }.getOrDefault(emptyMap())
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val sdf = getDateFormat()
         val todayStr = sdf.format(Date())
         val nowMs = System.currentTimeMillis()
 
@@ -88,7 +96,7 @@ class LocalStore(private val context: Context) {
 
     suspend fun recordListeningSeconds(seconds: Long) {
         if (seconds <= 0) return
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val today = getDateFormat().format(Date())
         val currentLogs = (readJson<Map<String, Long>>(Keys.LISTENING_LOGS) ?: emptyMap()).toMutableMap()
         val currentSeconds = currentLogs[today] ?: 0L
         currentLogs[today] = currentSeconds + seconds

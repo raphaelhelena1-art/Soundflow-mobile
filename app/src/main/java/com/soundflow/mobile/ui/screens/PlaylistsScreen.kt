@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -100,8 +102,12 @@ fun PlaylistsScreen(
         }
     }
 
-    val sortedPlaylists = playlists.sortedBy { if (it.id == PlaylistsViewModel.FAVORITES_PLAYLIST_ID) 0 else 1 }
-    val selectedPlaylist = playlists.firstOrNull { it.id == selectedPlaylistId }
+    val sortedPlaylists = remember(playlists) {
+        playlists.sortedBy { if (it.id == PlaylistsViewModel.FAVORITES_PLAYLIST_ID) 0 else 1 }
+    }
+    val selectedPlaylist = remember(playlists, selectedPlaylistId) {
+        playlists.firstOrNull { it.id == selectedPlaylistId }
+    }
 
     fun sharePlaylist(playlist: Playlist) {
         val shareUrl = viewModel.generateShareUrl(playlist)
@@ -560,6 +566,14 @@ private fun SpotifyImportDialog(
                             text = "Importation en cours...",
                             style = MaterialTheme.typography.titleMedium,
                         )
+                        if (state.currentImportingPlaylistName.isNotBlank()) {
+                            Text(
+                                text = "Playlist : ${state.currentImportingPlaylistName}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = state.currentImportingTrackName,
@@ -581,39 +595,31 @@ private fun SpotifyImportDialog(
                         )
                     }
                     !state.isAuthenticated -> {
-                        var inputClientId by remember { mutableStateOf(state.clientId) }
-                        Text(
-                            text = "Connectez-vous à votre compte Spotify pour importer vos playlists publiques ou privées.",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = inputClientId,
-                            onValueChange = {
-                                inputClientId = it
-                                spotifyViewModel.setClientId(it)
-                            },
-                            label = { Text("Client ID Spotify") },
-                            placeholder = { Text("Entrez votre Client ID Spotify") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text(
-                            text = "Pour obtenir un Client ID gratuit : developer.spotify.com/dashboard -> Créer une app -> Redirect URI : soundflow://spotify-callback",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = {
-                                val url = spotifyViewModel.getAuthorizationUrl(inputClientId)
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            },
-                            enabled = inputClientId.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth(),
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
-                            Text("Se connecter à Spotify")
+                            Text(
+                                text = "Importation Spotify 1-Clic",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "Connectez-vous à votre compte Spotify pour importer instantanément l'intégralité de vos playlists publiques et privées.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = {
+                                    val url = spotifyViewModel.getAuthorizationUrl()
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("Se connecter à Spotify", color = Color.White)
+                            }
                         }
                     }
                     state.isLoadingPlaylists -> {
@@ -625,20 +631,40 @@ private fun SpotifyImportDialog(
                         Text("Aucune playlist trouvée sur votre compte Spotify.")
                     }
                     else -> {
-                        Text(
-                            text = "Sélectionnez une playlist à importer :",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "Cochez les playlists à importer :",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Row {
+                                TextButton(onClick = { spotifyViewModel.selectAllPlaylists() }) {
+                                    Text("Tout cocher", style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = { spotifyViewModel.deselectAllPlaylists() }) {
+                                    Text("Tout décocher", style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+
                         LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
                             items(state.playlists, key = { it.id }) { playlist ->
+                                val isSelected = playlist.id in state.selectedPlaylistIds
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 8.dp),
+                                        .clickable { spotifyViewModel.togglePlaylistSelection(playlist.id) }
+                                        .padding(vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { spotifyViewModel.togglePlaylistSelection(playlist.id) },
+                                    )
+                                    Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
                                         Text(
                                             text = playlist.name,
                                             style = MaterialTheme.typography.bodyLarge,
@@ -650,13 +676,6 @@ private fun SpotifyImportDialog(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
-                                    }
-                                    Button(
-                                        onClick = {
-                                            spotifyViewModel.importPlaylist(playlist, playlistsViewModel)
-                                        },
-                                    ) {
-                                        Text("Importer")
                                     }
                                 }
                             }
@@ -685,11 +704,24 @@ private fun SpotifyImportDialog(
         },
         confirmButton = {
             if (!state.isImporting) {
-                TextButton(onClick = {
-                    spotifyViewModel.clearMessages()
-                    onDismiss()
-                }) {
-                    Text("Fermer")
+                Row {
+                    if (state.isAuthenticated && state.playlists.isNotEmpty()) {
+                        Button(
+                            onClick = {
+                                spotifyViewModel.importSelectedPlaylists(playlistsViewModel)
+                            },
+                            enabled = state.selectedPlaylistIds.isNotEmpty(),
+                            modifier = Modifier.padding(end = 8.dp),
+                        ) {
+                            Text("Importer (${state.selectedPlaylistIds.size})")
+                        }
+                    }
+                    TextButton(onClick = {
+                        spotifyViewModel.clearMessages()
+                        onDismiss()
+                    }) {
+                        Text("Fermer")
+                    }
                 }
             }
         },

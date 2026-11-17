@@ -52,8 +52,10 @@ class PlayerController(private val context: Context) {
     private val _player = MutableStateFlow<Player?>(null)
     val player: StateFlow<Player?> = _player.asStateFlow()
 
-    private val _playbackMode = MutableStateFlow(PlaybackMode.SEQUENTIAL)
+    private val _playbackMode = MutableStateFlow(PlaybackMode.SHUFFLE)
     val playbackMode: StateFlow<PlaybackMode> = _playbackMode.asStateFlow()
+
+    private var isCrossfading = false
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -83,8 +85,15 @@ class PlayerController(private val context: Context) {
             val controller = mediaController ?: return
             val newIndex = controller.currentMediaItemIndex
             if (newIndex in queue.indices && newIndex != currentIndex) {
-                currentIndex = newIndex
-                _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && _playbackMode.value == PlaybackMode.SHUFFLE) {
+                    val targetIndex = nextIndex()
+                    currentIndex = targetIndex
+                    controller.seekToDefaultPosition(targetIndex)
+                    _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
+                } else {
+                    currentIndex = newIndex
+                    _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
+                }
             }
         }
 
@@ -131,14 +140,15 @@ class PlayerController(private val context: Context) {
     private fun performCrossfadeAndSwitch(switchAction: () -> Unit) {
         val controller = mediaController ?: run { switchAction(); return }
         val fadeSec = _crossfadeSeconds.value
-        if (fadeSec <= 0f) {
+        if (fadeSec <= 0f || isCrossfading) {
             switchAction()
             return
         }
+        isCrossfading = true
         scope.launch {
             val fadeHalfMs = ((fadeSec * 1000f) / 2f).toLong().coerceAtLeast(100L)
-            val steps = 10
-            val stepDelay = (fadeHalfMs / steps).coerceAtLeast(10L)
+            val steps = 25
+            val stepDelay = (fadeHalfMs / steps).coerceAtLeast(15L)
             for (i in steps downTo 0) {
                 controller.volume = i.toFloat() / steps
                 delay(stepDelay)
@@ -150,6 +160,7 @@ class PlayerController(private val context: Context) {
                 delay(stepDelay)
             }
             controller.volume = 1f
+            isCrossfading = false
         }
     }
 
@@ -173,7 +184,11 @@ class PlayerController(private val context: Context) {
         val track = queue.getOrNull(currentIndex) ?: return
         val controller = mediaController ?: return
         val items = queue.map { buildMediaItem(it) }
-        controller.repeatMode = if (queue.size > 1) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
+        controller.repeatMode = if (_playbackMode.value == PlaybackMode.REPEAT_ONE) {
+            Player.REPEAT_MODE_ONE
+        } else {
+            Player.REPEAT_MODE_OFF
+        }
         controller.setMediaItems(items, currentIndex, 0L)
         controller.prepare()
         controller.play()
@@ -208,25 +223,44 @@ class PlayerController(private val context: Context) {
     fun toggleShuffle() {
         if (_playbackMode.value == PlaybackMode.SHUFFLE) {
             _playbackMode.update { PlaybackMode.SEQUENTIAL }
+            mediaController?.repeatMode = Player.REPEAT_MODE_OFF
         } else {
             regenerateShuffleOrder()
             _playbackMode.update { PlaybackMode.SHUFFLE }
+            mediaController?.repeatMode = Player.REPEAT_MODE_OFF
         }
     }
 
-    /** Cycle Désactivé/Aléatoire → Toutes → Une seule → Désactivé — désactive l'aléatoire au passage. */
+    /** Cycle Désactivé/Aléatoire → Toutes → Une seule → Désactivé. */
     fun cycleRepeatMode() {
-        _playbackMode.update {
-            when (it) {
+        _playbackMode.update { current ->
+            val nextMode = when (current) {
                 PlaybackMode.REPEAT_ALL -> PlaybackMode.REPEAT_ONE
                 PlaybackMode.REPEAT_ONE -> PlaybackMode.SEQUENTIAL
-                else -> PlaybackMode.REPEAT_ALL
+                PlaybackMode.SEQUENTIAL -> PlaybackMode.REPEAT_ALL
+                PlaybackMode.SHUFFLE -> PlaybackMode.REPEAT_ALL
             }
+            val targetRepeatMode = if (nextMode == PlaybackMode.REPEAT_ONE) {
+                Player.REPEAT_MODE_ONE
+            } else {
+                Player.REPEAT_MODE_OFF
+            }
+            mediaController?.repeatMode = targetRepeatMode
+            nextMode
         }
     }
 
     private fun regenerateShuffleOrder() {
-        shuffleOrder = queue.indices.shuffled()
+        if (queue.isEmpty()) {
+            shuffleOrder = emptyList()
+            return
+        }
+        if (currentIndex in queue.indices) {
+            val remaining = queue.indices.filterNot { it == currentIndex }.shuffled()
+            shuffleOrder = listOf(currentIndex) + remaining
+        } else {
+            shuffleOrder = queue.indices.shuffled()
+        }
     }
 
     private fun nextIndex(): Int {
@@ -259,12 +293,14 @@ class PlayerController(private val context: Context) {
                     playCurrentQueueItem()
                 }
             }
-            PlaybackMode.SEQUENTIAL, PlaybackMode.SHUFFLE -> {
-                val isLast = if (_playbackMode.value == PlaybackMode.SHUFFLE && shuffleOrder.isNotEmpty()) {
-                    shuffleOrder.indexOf(currentIndex) >= shuffleOrder.size - 1
-                } else {
-                    currentIndex >= queue.size - 1
+            PlaybackMode.SHUFFLE -> {
+                performCrossfadeAndSwitch {
+                    currentIndex = nextIndex()
+                    playCurrentQueueItem()
                 }
+            }
+            PlaybackMode.SEQUENTIAL -> {
+                val isLast = currentIndex >= queue.size - 1
                 if (!isLast) {
                     performCrossfadeAndSwitch {
                         currentIndex = nextIndex()
@@ -307,8 +343,21 @@ class PlayerController(private val context: Context) {
         positionUpdateJob?.cancel()
         positionUpdateJob = scope.launch {
             while (true) {
-                _state.update { it.copy(positionMs = mediaController?.currentPosition ?: 0L) }
-                delay(500)
+                val controller = mediaController
+                val pos = controller?.currentPosition ?: 0L
+                val dur = controller?.duration ?: 0L
+                _state.update { it.copy(positionMs = pos) }
+
+                val fadeSec = _crossfadeSeconds.value
+                if (fadeSec > 0f && !isCrossfading && controller?.isPlaying == true && dur > 5000L && _playbackMode.value != PlaybackMode.REPEAT_ONE) {
+                    val fadeMs = (fadeSec * 1000f).toLong()
+                    val remainingMs = dur - pos
+                    if (remainingMs in 100L..fadeMs) {
+                        skipToNext()
+                    }
+                }
+
+                delay(200)
             }
         }
     }

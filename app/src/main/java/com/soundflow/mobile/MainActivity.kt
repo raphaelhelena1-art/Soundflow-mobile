@@ -76,5 +76,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @OptIn(UnstableApi::class)
+    override fun onDestroy() {
+        if (isFinishing) {
+            stopService(Intent(this, com.soundflow.core.player.PlaybackService::class.java))
+        }
+        super.onDestroy()
+    }
+
     private fun String?.isNull_or_empty(): Boolean = this == null || this.isEmpty()
 }
