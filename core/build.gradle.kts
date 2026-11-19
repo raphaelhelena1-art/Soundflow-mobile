@@ -56,4 +56,7 @@ dependencies {
 
     // Sérialisation (pour la persistance locale des données utilisateur)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    // Tests unitaires
+    testImplementation("junit:junit:4.13.2")
 }

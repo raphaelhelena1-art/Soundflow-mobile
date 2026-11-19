@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
@@ -32,6 +34,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +62,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,11 +76,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import com.soundflow.mobile.R
 import com.soundflow.mobile.downloads.DownloadsViewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.soundflow.mobile.MainActivity
+import com.soundflow.mobile.exportify.ExportifyViewModel
 import com.soundflow.mobile.player.PlayerViewModel
 import com.soundflow.mobile.playlists.Playlist
 import com.soundflow.mobile.playlists.PlaylistType
 import com.soundflow.mobile.playlists.PlaylistsViewModel
-import com.soundflow.mobile.spotify.SpotifyViewModel
 import com.soundflow.mobile.ui.components.NumberedTrackRow
 import kotlinx.coroutines.launch
 
@@ -91,8 +103,25 @@ fun PlaylistsScreen(
     var selectedPlaylistId by remember { mutableStateOf<String?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
-    var showSpotifyImportDialog by remember { mutableStateOf(false) }
+    var showExportifyImportDialog by remember { mutableStateOf(false) }
     var playlistToRename by remember { mutableStateOf<Playlist?>(null) }
+
+    val exportifyViewModel: ExportifyViewModel = viewModel()
+    val activity = context as? MainActivity
+
+    LaunchedEffect(Unit) {
+        val pendingCsv = activity?.consumePendingCsvUri()
+        if (pendingCsv != null) {
+            showExportifyImportDialog = true
+            exportifyViewModel.importCsv(
+                contentResolver = context.contentResolver,
+                uri = pendingCsv,
+                rawCsvText = null,
+                customPlaylistName = null,
+                playlistsViewModel = viewModel,
+            )
+        }
+    }
 
     val pendingOpenId by viewModel.pendingOpenPlaylistId.collectAsStateWithLifecycle()
     LaunchedEffect(pendingOpenId) {
@@ -144,8 +173,8 @@ fun PlaylistsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.playlists_title)) },
                 actions = {
-                    TextButton(onClick = { showSpotifyImportDialog = true }) {
-                        Text("Spotify", color = Color(0xFF1DB954))
+                    TextButton(onClick = { showExportifyImportDialog = true }) {
+                        Text("Exportify", color = Color(0xFF1DB954))
                     }
                     IconButton(onClick = { showImportDialog = true }) {
                         Icon(Icons.Filled.Link, contentDescription = stringResource(R.string.playlist_import_url))
@@ -208,10 +237,11 @@ fun PlaylistsScreen(
         )
     }
 
-    if (showSpotifyImportDialog) {
-        SpotifyImportDialog(
+    if (showExportifyImportDialog) {
+        ExportifyImportDialog(
             playlistsViewModel = viewModel,
-            onDismiss = { showSpotifyImportDialog = false },
+            onDismiss = { showExportifyImportDialog = false },
+            exportifyViewModel = exportifyViewModel,
         )
     }
 
@@ -228,6 +258,7 @@ fun PlaylistsScreen(
     }
 }
 
+@UnstableApi
 @Composable
 private fun PlaylistRow(
     playlist: Playlist,
@@ -535,149 +566,246 @@ private fun PlaylistDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@UnstableApi
 @Composable
-private fun SpotifyImportDialog(
+private fun ExportifyImportDialog(
     playlistsViewModel: PlaylistsViewModel,
     onDismiss: () -> Unit,
-    spotifyViewModel: SpotifyViewModel = viewModel(),
+    exportifyViewModel: ExportifyViewModel = viewModel(),
 ) {
     val context = LocalContext.current
-    val state by spotifyViewModel.state.collectAsStateWithLifecycle()
+    val state by exportifyViewModel.state.collectAsStateWithLifecycle()
+    var spotifyUrlInput by remember { mutableStateOf("") }
 
-    LaunchedEffect(Unit) {
-        if (state.isAuthenticated && state.playlists.isEmpty()) {
-            spotifyViewModel.loadPlaylists()
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            exportifyViewModel.importCsv(
+                contentResolver = context.contentResolver,
+                uri = uri,
+                rawCsvText = null,
+                customPlaylistName = null,
+                playlistsViewModel = playlistsViewModel,
+            )
         }
     }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = {
             if (!state.isImporting) {
-                spotifyViewModel.clearMessages()
+                exportifyViewModel.clearMessages()
                 onDismiss()
             }
         },
-        title = { Text("Importer de Spotify") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                when {
-                    state.isImporting -> {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .fillMaxHeight(0.85f),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+            ) {
+                // Header Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Importation en cours...",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = if (state.isImporting) "Importation Exportify en cours..." else "Importation Exportify (Spotify)",
+                            style = MaterialTheme.typography.titleLarge,
                         )
-                        if (state.currentImportingPlaylistName.isNotBlank()) {
+                        if (!state.isImporting) {
                             Text(
-                                text = "Playlist : ${state.currentImportingPlaylistName}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(top = 4.dp),
+                                text = "Importez vos playlists Spotify en fichier CSV",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = state.currentImportingTrackName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        val progress = if (state.importTotal > 0) state.importProgress.toFloat() / state.importTotal else 0f
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "${state.importProgress} / ${state.importTotal} morceau(x)",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
                     }
-                    !state.isAuthenticated -> {
+                    if (!state.isImporting) {
+                        IconButton(onClick = {
+                            exportifyViewModel.clearMessages()
+                            onDismiss()
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Fermer")
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                if (state.isImporting) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Column(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                text = "Importation Spotify 1-Clic",
+                                text = "Recherche des morceaux sur YouTube...",
                                 style = MaterialTheme.typography.titleMedium,
                             )
-                            Spacer(Modifier.height(8.dp))
+                            if (state.currentImportingPlaylistName.isNotBlank()) {
+                                Text(
+                                    text = "Playlist : ${state.currentImportingPlaylistName}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                            }
+                            Spacer(Modifier.height(16.dp))
                             Text(
-                                text = "Connectez-vous à votre compte Spotify pour importer instantanément l'intégralité de vos playlists publiques et privées.",
+                                text = state.currentImportingTrackName,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                             Spacer(Modifier.height(20.dp))
+                            val progress = if (state.importTotal > 0) state.importProgress.toFloat() / state.importTotal else 0f
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "${state.importProgress} / ${state.importTotal} morceau(x)",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        // Card Étape 1
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Étape 1 : Obtenir le fichier CSV",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Ouvrez Exportify dans votre navigateur, connectez-vous à Spotify et téléchargez le fichier CSV de votre playlist.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = {
+                                        runCatching {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://exportify.net/"))
+                                            context.startActivity(intent)
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    Text("Ouvrir Exportify (navigateur)", color = Color.White)
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Card Étape 2
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Étape 2 : Importer le fichier CSV",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "Sélectionnez le fichier CSV que vous venez de télécharger sur votre appareil.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = {
+                                        filePickerLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "application/csv", "*/*"))
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Download,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    Text("Sélectionner le fichier CSV")
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+
+                        // Section Alternative : Lien Spotify direct
+                        Text(
+                            text = "Alternative : Import par lien Spotify direct",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = spotifyUrlInput,
+                            onValueChange = { spotifyUrlInput = it },
+                            label = { Text("Lien Spotify (open.spotify.com/playlist/...)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (spotifyUrlInput.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
                             Button(
                                 onClick = {
-                                    val url = spotifyViewModel.getAuthorizationUrl()
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                    exportifyViewModel.importSpotifyUrl(
+                                        url = spotifyUrlInput.trim(),
+                                        playlistsViewModel = playlistsViewModel,
+                                    )
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1DB954)),
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("Se connecter à Spotify", color = Color.White)
-                            }
-                        }
-                    }
-                    state.isLoadingPlaylists -> {
-                        Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    state.playlists.isEmpty() -> {
-                        Text("Aucune playlist trouvée sur votre compte Spotify.")
-                    }
-                    else -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Cochez les playlists à importer :",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Row {
-                                TextButton(onClick = { spotifyViewModel.selectAllPlaylists() }) {
-                                    Text("Tout cocher", style = MaterialTheme.typography.bodySmall)
-                                }
-                                TextButton(onClick = { spotifyViewModel.deselectAllPlaylists() }) {
-                                    Text("Tout décocher", style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
-
-                        LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
-                            items(state.playlists, key = { it.id }) { playlist ->
-                                val isSelected = playlist.id in state.selectedPlaylistIds
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { spotifyViewModel.togglePlaylistSelection(playlist.id) }
-                                        .padding(vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = { spotifyViewModel.togglePlaylistSelection(playlist.id) },
-                                    )
-                                    Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                                        Text(
-                                            text = playlist.name,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                        Text(
-                                            text = "${playlist.tracks?.total ?: 0} morceau(x)",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                }
+                                Text("Importer la playlist par lien", color = Color.White)
                             }
                         }
                     }
@@ -688,7 +816,7 @@ private fun SpotifyImportDialog(
                         text = msg,
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 12.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
 
@@ -697,33 +825,10 @@ private fun SpotifyImportDialog(
                         text = msg,
                         color = Color(0xFF1DB954),
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 12.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }
-        },
-        confirmButton = {
-            if (!state.isImporting) {
-                Row {
-                    if (state.isAuthenticated && state.playlists.isNotEmpty()) {
-                        Button(
-                            onClick = {
-                                spotifyViewModel.importSelectedPlaylists(playlistsViewModel)
-                            },
-                            enabled = state.selectedPlaylistIds.isNotEmpty(),
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) {
-                            Text("Importer (${state.selectedPlaylistIds.size})")
-                        }
-                    }
-                    TextButton(onClick = {
-                        spotifyViewModel.clearMessages()
-                        onDismiss()
-                    }) {
-                        Text("Fermer")
-                    }
-                }
-            }
-        },
-    )
+        }
+    }
 }

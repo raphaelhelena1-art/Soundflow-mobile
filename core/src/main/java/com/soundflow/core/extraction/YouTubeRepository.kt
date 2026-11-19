@@ -41,6 +41,71 @@ class YouTubeRepository {
         searchInfo.relatedItems.filterIsInstance<StreamInfoItem>().map(::toSearchResult)
     }
 
+    /**
+     * Recherche la meilleure correspondance pour une piste issue de Spotify
+     * en appliquant un filtrage strict par correspondance exacte de durée,
+     * chaîne officielle (- Topic, VEVO, Official) et type de piste (studio vs live/remix).
+     */
+    suspend fun searchBestMatch(
+        title: String,
+        artist: String,
+        durationMs: Long,
+    ): SearchResult? = withContext(Dispatchers.IO) {
+        val query = if (artist.isNotBlank()) "$artist - $title" else title
+        val results = search(query)
+        if (results.isEmpty()) return@withContext null
+
+        val targetDurationSec = if (durationMs > 0) durationMs / 1000L else 0L
+        val lowerTitle = title.lowercase()
+
+        val isOriginalLive = lowerTitle.contains("live")
+        val isOriginalRemix = lowerTitle.contains("remix")
+        val isOriginalCover = lowerTitle.contains("cover")
+        val isOriginalInstrumental = lowerTitle.contains("instrumental")
+
+        fun calculateScore(item: SearchResult): Int {
+            var score = 0
+            val uploader = item.uploaderName.trim()
+            val itemTitle = item.title.trim()
+            val lowerItemTitle = itemTitle.lowercase()
+
+            // 1. Filtrage par chaîne officielle
+            when {
+                uploader.endsWith("- Topic", ignoreCase = true) || uploader.contains("$artist - Topic", ignoreCase = true) -> score += 100
+                uploader.contains("VEVO", ignoreCase = true) -> score += 80
+                artist.isNotBlank() && uploader.equals(artist, ignoreCase = true) -> score += 70
+                artist.isNotBlank() && uploader.contains(artist, ignoreCase = true) -> score += 50
+                uploader.contains("Official", ignoreCase = true) || itemTitle.contains("Official", ignoreCase = true) -> score += 30
+            }
+
+            // 2. Filtrage par correspondance de durée exacte
+            if (targetDurationSec > 0 && item.durationSeconds > 0) {
+                val diff = Math.abs(item.durationSeconds - targetDurationSec)
+                when {
+                    diff == 0L || diff == 1L -> score += 70 // Correspondance parfaite 1:1
+                    diff <= 3 -> score += 50
+                    diff <= 7 -> score += 30
+                    diff <= 15 -> score += 10
+                    diff > 25 -> score -= 80 // Pénalise fortement les clips avec intros/outros longues ou remixes
+                }
+            }
+
+            // 3. Pénalisation des variations non souhaitées (Live, Remix, Cover, Instrumental) si l'original ne l'est pas
+            if (!isOriginalLive && lowerItemTitle.contains("live")) score -= 30
+            if (!isOriginalRemix && lowerItemTitle.contains("remix")) score -= 30
+            if (!isOriginalCover && lowerItemTitle.contains("cover")) score -= 40
+            if (!isOriginalInstrumental && lowerItemTitle.contains("instrumental")) score -= 40
+
+            // 4. Correspondance du titre et de l'artiste
+            if (itemTitle.contains(title, ignoreCase = true)) score += 20
+            if (artist.isNotBlank() && itemTitle.contains(artist, ignoreCase = true)) score += 10
+
+            return score
+        }
+
+        results.sortedByDescending { calculateScore(it) }.firstOrNull()
+    }
+
     /** Récupère la page suivante de résultats pour la dernière recherche effectuée. */
     suspend fun loadMoreResults(): List<SearchResult> = withContext(Dispatchers.IO) {
         val handler = lastQueryHandler ?: return@withContext emptyList()

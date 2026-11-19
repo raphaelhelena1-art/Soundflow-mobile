@@ -12,9 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
+import android.net.Uri
 import com.soundflow.mobile.data.LocalStore
 import com.soundflow.mobile.navigation.SoundFlowNavHost
-import com.soundflow.mobile.spotify.SpotifyAuthChannel
 import com.soundflow.mobile.ui.theme.SoundFlowTheme
 import kotlinx.coroutines.launch
 
@@ -22,6 +22,15 @@ class MainActivity : AppCompatActivity() {
 
     var sharedUrlFromIntent: String? = null
         private set
+
+    var pendingCsvUriFromIntent: Uri? = null
+        private set
+
+    fun consumePendingCsvUri(): Uri? {
+        val uri = pendingCsvUriFromIntent
+        pendingCsvUriFromIntent = null
+        return uri
+    }
 
     @OptIn(UnstableApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,17 +65,21 @@ class MainActivity : AppCompatActivity() {
         handleIncomingIntent(intent)
     }
 
+    @Suppress("DEPRECATION")
     private fun handleIncomingIntent(intent: Intent?) {
-        val action = intent?.action
-        val data = intent?.dataString
-        val extraText = intent?.getStringExtra(Intent.EXTRA_TEXT)
+        if (intent == null) return
+        val action = intent.action
+        val data = intent.dataString
+        val extraText = intent.getStringExtra(Intent.EXTRA_TEXT)
 
-        val uri = intent?.data
-        if (uri != null && uri.scheme == "soundflow" && uri.host == "spotify-callback") {
-            val code = uri.getQueryParameter("code")
-            if (code != null) {
-                SpotifyAuthChannel.onCodeReceived(code)
-            }
+        val uri = intent.data ?: intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+        val type = intent.type.orEmpty()
+        val isCsv = type.contains("csv", ignoreCase = true) ||
+                (uri != null && uri.toString().lowercase().contains(".csv")) ||
+                (data?.lowercase()?.contains(".csv") == true)
+
+        if ((action == Intent.ACTION_VIEW || action == Intent.ACTION_SEND) && uri != null && isCsv) {
+            pendingCsvUriFromIntent = uri
         }
 
         sharedUrlFromIntent = when {
