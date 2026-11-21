@@ -143,18 +143,29 @@ fun HomeScreen(
                                         if (isCurrentTrack) {
                                             playerViewModel.togglePlayPause()
                                         } else {
-                                            loadingPlayId = result.id
-                                            coroutineScope.launch {
-                                                try {
-                                                    val track = viewModel.resolveTrack(result)
-                                                    if (track != null) playerViewModel.playTrack(track)
-                                                    else snackbarHostState.showSnackbar(context.getString(R.string.no_stream_found))
-                                                } catch (e: Exception) {
-                                                    snackbarHostState.showSnackbar(e.message ?: e.javaClass.simpleName)
-                                                } finally {
-                                                    loadingPlayId = null
-                                                }
+                                            val localRecord = downloads.firstOrNull { store.extractVideoId(it.id) == targetId && it.localUri != null }
+                                            val track = if (localRecord != null) {
+                                                com.soundflow.core.player.Track(
+                                                    id = result.id,
+                                                    title = result.title,
+                                                    artist = result.uploaderName,
+                                                    mediaUrl = localRecord.localUri!!,
+                                                    artworkUrl = result.thumbnailUrl,
+                                                    hasVideo = !localRecord.isAudio,
+                                                    isDownloaded = true,
+                                                )
+                                            } else {
+                                                com.soundflow.core.player.Track(
+                                                    id = result.id,
+                                                    title = result.title,
+                                                    artist = result.uploaderName,
+                                                    mediaUrl = result.id,
+                                                    artworkUrl = result.thumbnailUrl,
+                                                    hasVideo = false,
+                                                    isDownloaded = false,
+                                                )
                                             }
+                                            playerViewModel.playTrack(track)
                                         }
                                     },
                                     onDownloadClick = {
@@ -254,29 +265,33 @@ fun HomeScreen(
             onDismiss = { pendingAdd = null },
             onPlaylistChosen = { playlist ->
                 pendingAdd = null
+                val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
+                val track = if (localRecord != null) {
+                    com.soundflow.core.player.Track(
+                        id = result.id,
+                        title = result.title,
+                        artist = result.uploaderName,
+                        mediaUrl = localRecord.localUri!!,
+                        artworkUrl = result.thumbnailUrl,
+                        hasVideo = !localRecord.isAudio,
+                        isDownloaded = true,
+                    )
+                } else {
+                    com.soundflow.core.player.Track(
+                        id = result.id,
+                        title = result.title,
+                        artist = result.uploaderName,
+                        mediaUrl = result.id,
+                        artworkUrl = result.thumbnailUrl,
+                        hasVideo = false,
+                        isDownloaded = isDownloaded,
+                    )
+                }
+                val added = playlistsViewModel.addTrack(playlist.id, track)
                 coroutineScope.launch {
-                    val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
-                    val track = if (localRecord != null) {
-                        com.soundflow.core.player.Track(
-                            id = result.id,
-                            title = result.title,
-                            artist = result.uploaderName,
-                            mediaUrl = localRecord.localUri!!,
-                            artworkUrl = result.thumbnailUrl,
-                            hasVideo = !localRecord.isAudio,
-                            isDownloaded = true,
-                        )
-                    } else {
-                        viewModel.resolveTrack(result)?.copy(isDownloaded = isDownloaded)
-                    }
-                    if (track != null) {
-                        val added = playlistsViewModel.addTrack(playlist.id, track)
-                        snackbarHostState.showSnackbar(
-                            context.getString(if (added) R.string.playlist_added else R.string.playlist_add_blocked),
-                        )
-                    } else {
-                        snackbarHostState.showSnackbar(context.getString(R.string.no_stream_found))
-                    }
+                    snackbarHostState.showSnackbar(
+                        context.getString(if (added) R.string.playlist_added else R.string.playlist_add_blocked),
+                    )
                 }
             },
         )
@@ -323,10 +338,8 @@ private suspend fun downloadFromHome(
     snackbarHostState: SnackbarHostState,
 ) {
     try {
-        val streams: DownloadStreams = viewModel.getDownloadStreams(result)
         performDownload(
             context = context,
-            streams = streams,
             id = result.id,
             title = result.title,
             artist = result.uploaderName,

@@ -2,6 +2,7 @@ package com.soundflow.mobile.spotify
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.util.UnstableApi
 import com.soundflow.core.extraction.YouTubeRepository
 import com.soundflow.core.player.Track
 import com.soundflow.core.spotify.SpotifyPlaylist
@@ -124,6 +125,7 @@ class SpotifyViewModel(
         }
     }
 
+    @UnstableApi
     fun importSelectedPlaylists(playlistsViewModel: PlaylistsViewModel) {
         val selectedPlaylists = _state.value.playlists.filter { it.id in _state.value.selectedPlaylistIds }
         if (selectedPlaylists.isEmpty()) return
@@ -181,8 +183,11 @@ class SpotifyViewModel(
                                     }
 
                                     val track = runCatching {
-                                        val results = youtubeRepository.search(query)
-                                        val topMatch = results.firstOrNull()
+                                        val topMatch = youtubeRepository.searchBestMatch(
+                                            title = sTrack.name,
+                                            artist = artistsStr,
+                                            durationMs = sTrack.durationMs,
+                                        )
                                         if (topMatch != null) {
                                             Track(
                                                 id = topMatch.id,
@@ -238,6 +243,7 @@ class SpotifyViewModel(
         }
     }
 
+    @UnstableApi
     fun importPlaylist(playlist: SpotifyPlaylist, playlistsViewModel: PlaylistsViewModel) {
         _state.update { it.copy(selectedPlaylistIds = setOf(playlist.id)) }
         importSelectedPlaylists(playlistsViewModel)

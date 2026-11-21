@@ -241,43 +241,56 @@ fun SearchScreen(
                                 if (isCurrentTrack) {
                                     playerViewModel.togglePlayPause()
                                 } else {
-                                    loadingPlayId = result.id
-                                    coroutineScope.launch {
-                                        try {
-                                            val track = viewModel.resolveTrack(result)
-                                            if (track != null) {
-                                                playerViewModel.playTrack(track)
-                                            } else {
-                                                snackbarHostState.showSnackbar(context.getString(R.string.no_stream_found))
-                                            }
-                                        } catch (e: Exception) {
-                                            snackbarHostState.showSnackbar(
-                                                "${context.getString(R.string.playback_error_prefix)}${e.message ?: e.javaClass.simpleName}",
-                                            )
-                                        } finally {
-                                            loadingPlayId = null
-                                        }
+                                    val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
+                                    val track = if (localRecord != null) {
+                                        com.soundflow.core.player.Track(
+                                            id = result.id,
+                                            title = result.title,
+                                            artist = result.uploaderName,
+                                            mediaUrl = localRecord.localUri!!,
+                                            artworkUrl = result.thumbnailUrl,
+                                            hasVideo = !localRecord.isAudio,
+                                            isDownloaded = true,
+                                        )
+                                    } else {
+                                        com.soundflow.core.player.Track(
+                                            id = result.id,
+                                            title = result.title,
+                                            artist = result.uploaderName,
+                                            mediaUrl = result.id,
+                                            artworkUrl = result.thumbnailUrl,
+                                            hasVideo = false,
+                                            isDownloaded = false,
+                                        )
                                     }
+                                    playerViewModel.playTrack(track)
                                 }
                             },
                             onFavoriteClick = {
-                                loadingFavoriteId = result.id
-                                coroutineScope.launch {
-                                    try {
-                                        val track = viewModel.resolveTrack(result)
-                                        if (track != null) {
-                                            playlistsViewModel.toggleFavorite(
-                                                track.copy(isDownloaded = result.id in downloadedIds),
-                                            )
-                                        } else {
-                                            snackbarHostState.showSnackbar(context.getString(R.string.no_stream_found))
-                                        }
-                                    } catch (e: Exception) {
-                                        snackbarHostState.showSnackbar(e.message ?: e.javaClass.simpleName)
-                                    } finally {
-                                        loadingFavoriteId = null
-                                    }
+                                val isDownloaded = result.id in downloadedIds
+                                val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
+                                val track = if (localRecord != null) {
+                                    com.soundflow.core.player.Track(
+                                        id = result.id,
+                                        title = result.title,
+                                        artist = result.uploaderName,
+                                        mediaUrl = localRecord.localUri!!,
+                                        artworkUrl = result.thumbnailUrl,
+                                        hasVideo = !localRecord.isAudio,
+                                        isDownloaded = true,
+                                    )
+                                } else {
+                                    com.soundflow.core.player.Track(
+                                        id = result.id,
+                                        title = result.title,
+                                        artist = result.uploaderName,
+                                        mediaUrl = result.id,
+                                        artworkUrl = result.thumbnailUrl,
+                                        hasVideo = false,
+                                        isDownloaded = isDownloaded,
+                                    )
                                 }
+                                playlistsViewModel.toggleFavorite(track)
                             },
                             onDownloadClick = {
                                 when {
@@ -333,38 +346,33 @@ fun SearchScreen(
             onDismiss = { pendingPlaylistPicker = null },
             onPlaylistChosen = { playlist ->
                 pendingPlaylistPicker = null
-                loadingAddId = result.id
+                val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
+                val track = if (localRecord != null) {
+                    com.soundflow.core.player.Track(
+                        id = result.id,
+                        title = result.title,
+                        artist = result.uploaderName,
+                        mediaUrl = localRecord.localUri!!,
+                        artworkUrl = result.thumbnailUrl,
+                        hasVideo = !localRecord.isAudio,
+                        isDownloaded = true,
+                    )
+                } else {
+                    com.soundflow.core.player.Track(
+                        id = result.id,
+                        title = result.title,
+                        artist = result.uploaderName,
+                        mediaUrl = result.id,
+                        artworkUrl = result.thumbnailUrl,
+                        hasVideo = false,
+                        isDownloaded = isDownloaded,
+                    )
+                }
+                val added = playlistsViewModel.addTrack(playlist.id, track)
                 coroutineScope.launch {
-                    try {
-                        // Préfère le fichier local déjà téléchargé (vraiment utilisable hors-ligne,
-                        // sans dépendre d'une URL de streaming qui finit par expirer).
-                        val localRecord = downloads.firstOrNull { it.id == result.id && it.localUri != null }
-                        val track = if (localRecord != null) {
-                            com.soundflow.core.player.Track(
-                                id = result.id,
-                                title = result.title,
-                                artist = result.uploaderName,
-                                mediaUrl = localRecord.localUri!!,
-                                artworkUrl = result.thumbnailUrl,
-                                hasVideo = !localRecord.isAudio,
-                                isDownloaded = true,
-                            )
-                        } else {
-                            viewModel.resolveTrack(result)?.copy(isDownloaded = isDownloaded)
-                        }
-                        if (track != null) {
-                            val added = playlistsViewModel.addTrack(playlist.id, track)
-                            snackbarHostState.showSnackbar(
-                                context.getString(if (added) R.string.playlist_added else R.string.playlist_add_blocked),
-                            )
-                        } else {
-                            snackbarHostState.showSnackbar(context.getString(R.string.no_stream_found))
-                        }
-                    } catch (e: Exception) {
-                        snackbarHostState.showSnackbar(e.message ?: e.javaClass.simpleName)
-                    } finally {
-                        loadingAddId = null
-                    }
+                    snackbarHostState.showSnackbar(
+                        context.getString(if (added) R.string.playlist_added else R.string.playlist_add_blocked),
+                    )
                 }
             },
         )

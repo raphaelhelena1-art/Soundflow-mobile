@@ -7,7 +7,6 @@ import androidx.work.Data
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
-import com.soundflow.core.extraction.DownloadStreams
 import com.soundflow.mobile.R
 import com.soundflow.mobile.YoutubeDownloadWorker
 import com.soundflow.mobile.playlists.PlaylistsViewModel
@@ -19,7 +18,6 @@ import com.soundflow.mobile.playlists.PlaylistsViewModel
 @OptIn(UnstableApi::class)
 suspend fun performDownload(
     context: Context,
-    streams: DownloadStreams,
     id: String,
     title: String,
     artist: String,
@@ -45,7 +43,7 @@ suspend fun performDownload(
         .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
         .build()
 
-    // 3. Enregistrement initial dans le ViewModel & marqueur de playlist
+    // 3. Enregistrement initial dans le ViewModel (état "en cours")
     downloadsViewModel.recordDownload(
         id = id,
         title = title,
@@ -55,8 +53,6 @@ suspend fun performDownload(
         downloadManagerId = -1L,
         needsAudioExtraction = false,
     )
-
-    playlistsViewModel.markDownloaded(id)
 
     // 4. Lancement de la tâche
     WorkManager.getInstance(context).enqueue(downloadWorkRequest)

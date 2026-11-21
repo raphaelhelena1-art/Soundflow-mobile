@@ -51,6 +51,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     init {
         controller.connect()
 
+        controller.localResolver = { trackId ->
+            val downloads = store.loadDownloads().orEmpty()
+            val videoId = store.extractVideoId(trackId)
+            downloads.firstOrNull {
+                (store.extractVideoId(it.id) == videoId || it.id == trackId) && !it.localUri.isNullOrBlank()
+            }?.localUri
+        }
+
         viewModelScope.launch {
             store.crossfadeSecondsFlow.collect { sec ->
                 controller.setCrossfadeSeconds(sec)

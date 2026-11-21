@@ -12,6 +12,7 @@ import com.soundflow.mobile.data.LocalStore
 import com.soundflow.mobile.downloads.DownloadsViewModel
 import com.soundflow.mobile.downloads.performDownload
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -79,14 +80,44 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
             }
             store.loadDownloadedIds()?.let { _downloadedTrackIds.value = it }
         }
+
+        viewModelScope.launch {
+            store.downloadsFlow.collect { downloadsList ->
+                val completedMap = downloadsList.filter { !it.localUri.isNullOrBlank() }
+                    .associateBy { store.extractVideoId(it.id) }
+
+                if (completedMap.isNotEmpty()) {
+                    _downloadedTrackIds.update { current ->
+                        current + completedMap.values.map { it.id }
+                    }
+                    persistDownloadedIds()
+
+                    _playlists.update { playlistsList ->
+                        playlistsList.map { playlist ->
+                            val updatedTracks = playlist.tracks.map { track ->
+                                val vId = store.extractVideoId(track.id)
+                                val match = completedMap[vId]
+                                if (match != null && match.localUri != null) {
+                                    track.copy(mediaUrl = match.localUri, isDownloaded = true)
+                                } else {
+                                    track
+                                }
+                            }
+                            playlist.copy(tracks = updatedTracks)
+                        }
+                    }
+                    persistPlaylists()
+                }
+            }
+        }
     }
 
     private fun persistPlaylists() {
-        viewModelScope.launch { store.savePlaylists(_playlists.value) }
+        viewModelScope.launch(Dispatchers.IO) { store.savePlaylists(_playlists.value) }
     }
 
     private fun persistDownloadedIds() {
-        viewModelScope.launch { store.saveDownloadedIds(_downloadedTrackIds.value) }
+        viewModelScope.launch(Dispatchers.IO) { store.saveDownloadedIds(_downloadedTrackIds.value) }
     }
 
     fun markDownloaded(trackId: String) {
@@ -315,6 +346,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                         playlistsViewModel = this@PlaylistsViewModel,
                         onMessage = {},
                     )
+                    delay(600) // Espacement de 600 ms entre les requêtes pour éviter le blocage HTTP 429 de YouTube
                 }
             }
         }

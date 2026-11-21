@@ -8,9 +8,11 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.soundflow.mobile.downloads.DownloadRecord
 import com.soundflow.mobile.playlists.Playlist
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
@@ -94,8 +96,8 @@ class LocalStore(private val context: Context) {
         )
     }
 
-    suspend fun recordListeningSeconds(seconds: Long) {
-        if (seconds <= 0) return
+    suspend fun recordListeningSeconds(seconds: Long) = withContext(Dispatchers.IO) {
+        if (seconds <= 0) return@withContext
         val today = getDateFormat().format(Date())
         val currentLogs = (readJson<Map<String, Long>>(Keys.LISTENING_LOGS) ?: emptyMap()).toMutableMap()
         val currentSeconds = currentLogs[today] ?: 0L
@@ -108,17 +110,23 @@ class LocalStore(private val context: Context) {
         return regex.find(rawId)?.groupValues?.get(1) ?: rawId.trim()
     }
 
-    suspend fun saveCrossfadeSeconds(seconds: Float) {
+    suspend fun saveCrossfadeSeconds(seconds: Float) = withContext(Dispatchers.IO) {
         context.dataStore.edit { it[Keys.CROSSFADE_SECONDS] = seconds }
     }
 
-    suspend fun loadLanguageTag(): String? = context.dataStore.data.first()[Keys.LANGUAGE_TAG]
-    suspend fun saveLanguageTag(tag: String) {
+    suspend fun loadLanguageTag(): String? = withContext(Dispatchers.IO) {
+        context.dataStore.data.first()[Keys.LANGUAGE_TAG]
+    }
+
+    suspend fun saveLanguageTag(tag: String) = withContext(Dispatchers.IO) {
         context.dataStore.edit { it[Keys.LANGUAGE_TAG] = tag }
     }
 
-    suspend fun loadSpotifyClientId(): String? = context.dataStore.data.first()[Keys.SPOTIFY_CLIENT_ID]
-    suspend fun saveSpotifyClientId(id: String) {
+    suspend fun loadSpotifyClientId(): String? = withContext(Dispatchers.IO) {
+        context.dataStore.data.first()[Keys.SPOTIFY_CLIENT_ID]
+    }
+
+    suspend fun saveSpotifyClientId(id: String) = withContext(Dispatchers.IO) {
         context.dataStore.edit { it[Keys.SPOTIFY_CLIENT_ID] = id.trim() }
     }
 
@@ -158,13 +166,14 @@ class LocalStore(private val context: Context) {
     suspend fun loadDownloadedIds(): Set<String>? = readJson(Keys.DOWNLOADED_IDS)
     suspend fun saveDownloadedIds(ids: Set<String>) = writeJson(Keys.DOWNLOADED_IDS, ids)
 
-    private suspend inline fun <reified T> readJson(key: Preferences.Key<String>): T? {
-        val raw = context.dataStore.data.first()[key] ?: return null
-        return runCatching { json.decodeFromString<T>(raw) }.getOrNull()
+    private suspend inline fun <reified T> readJson(key: Preferences.Key<String>): T? = withContext(Dispatchers.IO) {
+        val raw = context.dataStore.data.first()[key] ?: return@withContext null
+        runCatching { json.decodeFromString<T>(raw) }.getOrNull()
     }
 
-    private suspend inline fun <reified T> writeJson(key: Preferences.Key<String>, value: T) {
+    private suspend inline fun <reified T> writeJson(key: Preferences.Key<String>, value: T) = withContext(Dispatchers.IO) {
         val raw = json.encodeToString(value)
         context.dataStore.edit { it[key] = raw }
+        Unit
     }
 }

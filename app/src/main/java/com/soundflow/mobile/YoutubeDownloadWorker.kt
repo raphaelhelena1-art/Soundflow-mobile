@@ -64,7 +64,7 @@ class YoutubeDownloadWorker(
                 }
             }
 
-            var downloadedFile = findDownloadedFile(soundFlowDir, safeName, extension)
+            val downloadedFile = findDownloadedFile(soundFlowDir, safeName, extension)
             val artworkUrl = inputData.getString("ARTWORK_URL")
             val thumbnailLocalUri = downloadThumbnail(artworkUrl, soundFlowDir, safeName)
 
@@ -77,12 +77,11 @@ class YoutubeDownloadWorker(
 
             // Tentative 2 : Repli vers OkHttp direct stream
             Log.w("SoundFlow", "yt-dlp n'a pas produit de fichier valide, bascule vers OkHttp pour : $title")
-            val okHttpSuccess = downloadWithOkHttpFallback(videoUrl, downloadVideo, outputFile)
-            downloadedFile = findDownloadedFile(soundFlowDir, safeName, extension)
+            val okHttpFile = downloadWithOkHttpFallback(videoUrl, downloadVideo, soundFlowDir, safeName)
 
-            if (okHttpSuccess && downloadedFile != null) {
-                Log.d("SoundFlow", "Téléchargement OkHttp réussi pour : $title -> ${downloadedFile.absolutePath}")
-                val fileUri = Uri.fromFile(downloadedFile).toString()
+            if (okHttpFile != null) {
+                Log.d("SoundFlow", "Téléchargement OkHttp réussi pour : $title -> ${okHttpFile.absolutePath}")
+                val fileUri = Uri.fromFile(okHttpFile).toString()
                 store.markDownloadCompleted(trackId, fileUri, thumbnailLocalUri)
                 Result.success()
             } else {
@@ -127,6 +126,7 @@ class YoutubeDownloadWorker(
             file.isFile &&
                 file.length() > 0 &&
                 !file.name.endsWith(".part") &&
+                !file.name.endsWith(".jpg") &&
                 (file.name.startsWith(safeName) || file.name.contains(safeName))
         }
     }
@@ -134,8 +134,9 @@ class YoutubeDownloadWorker(
     private suspend fun downloadWithOkHttpFallback(
         videoUrl: String,
         downloadVideo: Boolean,
-        outputFile: File,
-    ): Boolean = withContext(Dispatchers.IO) {
+        soundFlowDir: File,
+        safeName: String,
+    ): File? = withContext(Dispatchers.IO) {
         runCatching {
             val repository = YouTubeRepository()
             val streams = repository.getDownloadStreams(videoUrl)
@@ -143,7 +144,16 @@ class YoutubeDownloadWorker(
                 streams.videoUrl ?: streams.audioUrl
             } else {
                 streams.audioUrl ?: streams.videoUrl
-            } ?: return@runCatching false
+            } ?: return@runCatching null
+
+            val ext = when {
+                downloadVideo -> "mp4"
+                streamUrl.contains("webm", ignoreCase = true) -> "webm"
+                streamUrl.contains("mp4", ignoreCase = true) || streamUrl.contains("m4a", ignoreCase = true) -> "m4a"
+                else -> "webm"
+            }
+
+            val targetFile = File(soundFlowDir, "$safeName.$ext")
 
             val client = OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
@@ -156,15 +166,15 @@ class YoutubeDownloadWorker(
                 .build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@runCatching false
-                val body = response.body ?: return@runCatching false
+                if (!response.isSuccessful) return@runCatching null
+                val body = response.body ?: return@runCatching null
                 body.byteStream().use { input ->
-                    outputFile.outputStream().use { output ->
+                    targetFile.outputStream().use { output ->
                         input.copyTo(output)
                     }
                 }
             }
-            outputFile.exists() && outputFile.length() > 0
-        }.getOrDefault(false)
+            if (targetFile.exists() && targetFile.length() > 0) targetFile else null
+        }.getOrNull()
     }
 }

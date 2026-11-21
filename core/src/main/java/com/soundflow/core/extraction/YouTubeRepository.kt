@@ -51,59 +51,83 @@ class YouTubeRepository {
         artist: String,
         durationMs: Long,
     ): SearchResult? = withContext(Dispatchers.IO) {
-        val query = if (artist.isNotBlank()) "$artist - $title" else title
-        val results = search(query)
+        val mainArtist = if (artist.isNotBlank()) artist.split(",", ";", " feat", " ft.", " Feat.", " Ft.").first().trim() else ""
+        val cleanTitle = title
+            .replace(Regex("""(?i)\s*-\s*\d{4}\s*remaster.*"""), "")
+            .replace(Regex("""(?i)\s*\(\d{4}\s*remaster.*\..*"""), "")
+            .trim()
+
+        val searchQuery = when {
+            mainArtist.isNotBlank() -> "$mainArtist - $cleanTitle"
+            artist.isNotBlank() -> "$artist - $cleanTitle"
+            else -> cleanTitle
+        }
+
+        var results = search(searchQuery)
+        if (results.isEmpty() && mainArtist.isNotBlank()) {
+            results = search(cleanTitle)
+        }
         if (results.isEmpty()) return@withContext null
 
         val targetDurationSec = if (durationMs > 0) durationMs / 1000L else 0L
-        val lowerTitle = title.lowercase()
+        val lowerCleanTitle = cleanTitle.lowercase()
 
-        val isOriginalLive = lowerTitle.contains("live")
-        val isOriginalRemix = lowerTitle.contains("remix")
-        val isOriginalCover = lowerTitle.contains("cover")
-        val isOriginalInstrumental = lowerTitle.contains("instrumental")
+        val isOriginalLive = lowerCleanTitle.contains("live")
+        val isOriginalRemix = lowerCleanTitle.contains("remix")
+        val isOriginalCover = lowerCleanTitle.contains("cover")
+        val isOriginalInstrumental = lowerCleanTitle.contains("instrumental")
+
+        val mainArtistLower = mainArtist.lowercase()
+        val titleWords = lowerCleanTitle.split(Regex("""\W+""")).filter { it.length > 2 }
 
         fun calculateScore(item: SearchResult): Int {
             var score = 0
             val uploader = item.uploaderName.trim()
+            val uploaderLower = uploader.lowercase()
             val itemTitle = item.title.trim()
             val lowerItemTitle = itemTitle.lowercase()
 
-            // 1. Filtrage par chaîne officielle
+            // 1. Filtrage par chaîne officielle DE L'ARTISTE PRINCIPAL
+            val isMainArtistTopic = mainArtistLower.isNotBlank() && uploaderLower.contains(mainArtistLower) && uploaderLower.contains("- topic")
+            val isMainArtistVevo = mainArtistLower.isNotBlank() && uploaderLower.contains(mainArtistLower) && uploaderLower.contains("vevo")
+            val isMainArtistUploader = mainArtistLower.isNotBlank() && uploaderLower.contains(mainArtistLower)
+
             when {
-                uploader.endsWith("- Topic", ignoreCase = true) || uploader.contains("$artist - Topic", ignoreCase = true) -> score += 100
-                uploader.contains("VEVO", ignoreCase = true) -> score += 80
-                artist.isNotBlank() && uploader.equals(artist, ignoreCase = true) -> score += 70
-                artist.isNotBlank() && uploader.contains(artist, ignoreCase = true) -> score += 50
-                uploader.contains("Official", ignoreCase = true) || itemTitle.contains("Official", ignoreCase = true) -> score += 30
+                isMainArtistTopic -> score += 150
+                isMainArtistVevo -> score += 120
+                isMainArtistUploader -> score += 80
+                uploaderLower.contains("official") || lowerItemTitle.contains("official") -> score += 30
             }
 
-            // 2. Filtrage par correspondance de durée exacte
+            // 2. Correspondance des mots du titre
+            if (titleWords.isNotEmpty()) {
+                val matchedCount = titleWords.count { lowerItemTitle.contains(it) }
+                val matchRatio = matchedCount.toFloat() / titleWords.size
+                score += (matchRatio * 80).toInt()
+            }
+
+            // 3. Filtrage par correspondance de durée exacte
             if (targetDurationSec > 0 && item.durationSeconds > 0) {
                 val diff = Math.abs(item.durationSeconds - targetDurationSec)
                 when {
-                    diff == 0L || diff == 1L -> score += 70 // Correspondance parfaite 1:1
-                    diff <= 3 -> score += 50
-                    diff <= 7 -> score += 30
-                    diff <= 15 -> score += 10
-                    diff > 25 -> score -= 80 // Pénalise fortement les clips avec intros/outros longues ou remixes
+                    diff <= 2L -> score += 100 // Correspondance parfaite 1:1
+                    diff <= 5L -> score += 70
+                    diff <= 10L -> score += 40
+                    diff <= 20L -> score += 10
+                    diff > 30L -> score -= 100 // Pénalise fortement les clips avec intros/outros longues ou remixes
                 }
             }
 
-            // 3. Pénalisation des variations non souhaitées (Live, Remix, Cover, Instrumental) si l'original ne l'est pas
-            if (!isOriginalLive && lowerItemTitle.contains("live")) score -= 30
-            if (!isOriginalRemix && lowerItemTitle.contains("remix")) score -= 30
-            if (!isOriginalCover && lowerItemTitle.contains("cover")) score -= 40
-            if (!isOriginalInstrumental && lowerItemTitle.contains("instrumental")) score -= 40
-
-            // 4. Correspondance du titre et de l'artiste
-            if (itemTitle.contains(title, ignoreCase = true)) score += 20
-            if (artist.isNotBlank() && itemTitle.contains(artist, ignoreCase = true)) score += 10
+            // 4. Pénalisation des variations non souhaitées (Live, Remix, Cover, Instrumental) si l'original ne l'est pas
+            if (!isOriginalLive && lowerItemTitle.contains("live")) score -= 40
+            if (!isOriginalRemix && lowerItemTitle.contains("remix")) score -= 40
+            if (!isOriginalCover && lowerItemTitle.contains("cover")) score -= 50
+            if (!isOriginalInstrumental && lowerItemTitle.contains("instrumental")) score -= 50
 
             return score
         }
 
-        results.sortedByDescending { calculateScore(it) }.firstOrNull()
+        results.maxByOrNull { calculateScore(it) }
     }
 
     /** Récupère la page suivante de résultats pour la dernière recherche effectuée. */

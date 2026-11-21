@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.audiofx.Equalizer
 import android.net.Uri
+import java.io.File
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -11,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.soundflow.core.extraction.YouTubeRepository
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class EqualizerPreset { FLAT, BASS_BOOST, TREBLE_BOOST, VOCAL }
 
@@ -36,11 +39,18 @@ enum class EqualizerPreset { FLAT, BASS_BOOST, TREBLE_BOOST, VOCAL }
 @UnstableApi
 class PlayerController(private val context: Context) {
 
+    private val youtubeRepository = YouTubeRepository()
     private var mediaController: MediaController? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var positionUpdateJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var playJob: Job? = null
+    private var preloadJob: Job? = null
     private var equalizer: Equalizer? = null
+
+    private val preloadedTracks = java.util.concurrent.ConcurrentHashMap<String, Track>()
+
+    var localResolver: (suspend (String) -> String?)? = null
 
     private var queue: List<Track> = emptyList()
     private var currentIndex: Int = 0
@@ -82,24 +92,16 @@ class PlayerController(private val context: Context) {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            val controller = mediaController ?: return
-            val newIndex = controller.currentMediaItemIndex
-            if (newIndex in queue.indices && newIndex != currentIndex) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && _playbackMode.value == PlaybackMode.SHUFFLE) {
-                    val targetIndex = nextIndex()
-                    currentIndex = targetIndex
-                    controller.seekToDefaultPosition(targetIndex)
-                    _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
-                } else {
-                    currentIndex = newIndex
-                    _state.update { it.copy(currentTrack = queue.getOrNull(currentIndex)) }
-                }
-            }
+            // Dans SoundFlow, la navigation dans la file (skipToNext, skipToPrevious, handleTrackEnded)
+            // est gérée dans l'état Kotlin (queue, currentIndex). Les MediaItems étant résolus et envoyés
+            // un par un à ExoPlayer, on ne réinitialise pas currentIndex ici.
         }
 
         override fun onPlayerError(error: PlaybackException) {
             val message = error.cause?.message ?: error.message ?: error.errorCodeName
             _state.update { it.copy(isPlaying = false, isBuffering = false, errorMessage = message) }
+            mediaController?.stop()
+            mediaController?.clearMediaItems()
         }
     }
 
@@ -116,6 +118,7 @@ class PlayerController(private val context: Context) {
     }
 
     fun playTrack(track: Track) {
+        preloadedTracks.clear()
         queue = listOf(track)
         currentIndex = 0
         shuffleOrder = emptyList()
@@ -124,6 +127,7 @@ class PlayerController(private val context: Context) {
 
     fun playQueue(tracks: List<Track>, startIndex: Int = 0) {
         if (tracks.isEmpty()) return
+        preloadedTracks.clear()
         queue = tracks
         currentIndex = startIndex.coerceIn(tracks.indices)
         if (_playbackMode.value == PlaybackMode.SHUFFLE) regenerateShuffleOrder()
@@ -183,16 +187,147 @@ class PlayerController(private val context: Context) {
     private fun playCurrentQueueItem() {
         val track = queue.getOrNull(currentIndex) ?: return
         val controller = mediaController ?: return
-        val items = queue.map { buildMediaItem(it) }
+
+        playJob?.cancel()
+
+        if (controller.isPlaying) {
+            controller.pause()
+        }
+
         controller.repeatMode = if (_playbackMode.value == PlaybackMode.REPEAT_ONE) {
             Player.REPEAT_MODE_ONE
         } else {
             Player.REPEAT_MODE_OFF
         }
-        controller.setMediaItems(items, currentIndex, 0L)
-        controller.prepare()
-        controller.play()
-        _state.update { it.copy(currentTrack = track, errorMessage = null) }
+
+        _state.update {
+            it.copy(
+                currentTrack = track,
+                isBuffering = true,
+                errorMessage = null,
+            )
+        }
+
+        playJob = scope.launch {
+            val preloaded = preloadedTracks[track.id] ?: preloadedTracks[track.mediaUrl]
+            val resolvedTrack = preloaded ?: resolvePlayableTrack(track)
+
+            if (resolvedTrack == null) {
+                controller.stop()
+                controller.clearMediaItems()
+                _state.update {
+                    it.copy(
+                        isBuffering = false,
+                        isPlaying = false,
+                        errorMessage = "Impossible de lire le morceau : extraction du flux audio échouée.",
+                    )
+                }
+                return@launch
+            }
+
+            _state.update { it.copy(currentTrack = resolvedTrack, isBuffering = false) }
+
+            val item = buildMediaItem(resolvedTrack)
+            controller.setMediaItem(item)
+            controller.prepare()
+            controller.play()
+
+            preloadNextTrack()
+        }
+    }
+
+    private fun preloadNextTrack() {
+        preloadJob?.cancel()
+        if (queue.size <= 1) return
+
+        val nextIdx = nextIndex()
+        val nextTrack = queue.getOrNull(nextIdx) ?: return
+
+        if (preloadedTracks.containsKey(nextTrack.id) ||
+            nextTrack.isDownloaded ||
+            nextTrack.mediaUrl.startsWith("file:", ignoreCase = true) ||
+            nextTrack.mediaUrl.startsWith("content:", ignoreCase = true)
+        ) {
+            return
+        }
+
+        preloadJob = scope.launch {
+            val resolved = resolvePlayableTrack(nextTrack)
+            if (resolved != null) {
+                preloadedTracks[nextTrack.id] = resolved
+                preloadedTracks[nextTrack.mediaUrl] = resolved
+            }
+        }
+    }
+
+    private suspend fun resolvePlayableTrack(track: Track): Track? = withContext(Dispatchers.IO) {
+        val isFileScheme = track.mediaUrl.startsWith("file:", ignoreCase = true)
+        val isContentScheme = track.mediaUrl.startsWith("content:", ignoreCase = true)
+
+        if (isFileScheme) {
+            val filePath = Uri.parse(track.mediaUrl).path
+            if (filePath != null && File(filePath).exists() && File(filePath).length() > 0) {
+                return@withContext track
+            }
+        } else if (isContentScheme) {
+            return@withContext track
+        } else if (track.isDownloaded) {
+            val filePath = Uri.parse(track.mediaUrl).path
+            if (filePath != null && File(filePath).exists() && File(filePath).length() > 0) {
+                return@withContext track
+            }
+        }
+
+        // Tente la résolution via le résolveur local (si téléchargé sur le téléphone)
+        val resolvedLocalUri = localResolver?.invoke(track.id) ?: localResolver?.invoke(track.mediaUrl)
+        if (!resolvedLocalUri.isNullOrBlank()) {
+            val localPath = Uri.parse(resolvedLocalUri).path
+            if (localPath != null && File(localPath).exists() && File(localPath).length() > 0) {
+                return@withContext track.copy(
+                    mediaUrl = resolvedLocalUri,
+                    isDownloaded = true,
+                )
+            }
+        }
+
+        val videoUrl = when {
+            track.mediaUrl.contains("youtube.com") || track.mediaUrl.contains("youtu.be") -> track.mediaUrl
+            track.id.contains("youtube.com") || track.id.contains("youtu.be") -> track.id
+            track.id.startsWith("http") -> track.id
+            else -> "https://www.youtube.com/watch?v=${track.id}"
+        }
+
+        val resolved = runCatching {
+            val streams = youtubeRepository.resolvePlaybackStreams(videoUrl)
+            val playableUrl = streams.combinedVideoUrl ?: streams.audioUrl
+            if (playableUrl != null) {
+                track.copy(
+                    mediaUrl = playableUrl,
+                    hasVideo = streams.combinedVideoUrl != null,
+                )
+            } else null
+        }.getOrNull()
+
+        if (resolved != null) return@withContext resolved
+
+        runCatching {
+            val bestMatch = youtubeRepository.searchBestMatch(
+                title = track.title,
+                artist = track.artist,
+                durationMs = 0L,
+            )
+            if (bestMatch != null) {
+                val streams = youtubeRepository.resolvePlaybackStreams(bestMatch.id)
+                val playableUrl = streams.combinedVideoUrl ?: streams.audioUrl
+                if (playableUrl != null) {
+                    track.copy(
+                        id = bestMatch.id,
+                        mediaUrl = playableUrl,
+                        hasVideo = streams.combinedVideoUrl != null,
+                    )
+                } else null
+            } else null
+        }.getOrNull()
     }
 
     private fun buildMediaItem(track: Track): MediaItem = MediaItem.Builder()
@@ -363,6 +498,9 @@ class PlayerController(private val context: Context) {
     }
 
     fun release() {
+        playJob?.cancel()
+        preloadJob?.cancel()
+        preloadedTracks.clear()
         positionUpdateJob?.cancel()
         sleepTimerJob?.cancel()
         equalizer?.release()

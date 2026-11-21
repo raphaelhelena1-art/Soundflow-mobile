@@ -100,7 +100,6 @@ class SpotifyRepository(
             playlists.addAll(page.items)
             if (page.next == null || page.items.isEmpty()) break
             offset += limit
-            delay(100) // Delai de sécurité pour éviter l'erreur 429 (rate limiting)
         }
 
         playlists
@@ -122,6 +121,10 @@ class SpotifyRepository(
 
             val page = runCatching {
                 httpClient.newCall(request).execute().use { response ->
+                    if (response.code == 429) {
+                        delay(1000)
+                        return@use null
+                    }
                     if (!response.isSuccessful) return@use null
                     val body = response.body?.string() ?: return@use null
                     json.decodeFromString<SpotifyPaginatedResponse<SpotifyPlaylistItem>>(body)
@@ -134,7 +137,6 @@ class SpotifyRepository(
 
             if (page.next == null || page.items.isEmpty()) break
             offset += limit
-            delay(100) // Delai de sécurité pour éviter l'erreur 429 (rate limiting)
         }
 
         tracks

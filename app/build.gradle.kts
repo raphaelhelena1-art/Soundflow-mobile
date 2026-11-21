@@ -14,8 +14,8 @@ android {
         minSdk = 26 // Android 8.0+, couvre la grande majorité des appareils actifs
         //noinspection GradleDependency,ExpiredTargetSdkVersion,EditedTargetSdkVersion
         targetSdk = 34
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.0.6"
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
