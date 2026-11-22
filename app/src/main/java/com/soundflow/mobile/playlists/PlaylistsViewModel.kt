@@ -6,7 +6,6 @@ import android.util.Base64
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
-import com.soundflow.core.extraction.DownloadStreams
 import com.soundflow.core.player.Track
 import com.soundflow.mobile.data.LocalStore
 import com.soundflow.mobile.downloads.DownloadsViewModel
@@ -22,6 +21,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 @Serializable
 enum class PlaylistType { ONLINE, OFFLINE }
@@ -293,7 +293,6 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                     if (!isLocal) {
                         performDownload(
                             context = context,
-                            streams = DownloadStreams(audioUrl = null, videoUrl = null, isVideoCombinedWithAudio = false),
                             id = track.id,
                             title = track.title,
                             artist = track.artist,
@@ -336,7 +335,6 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                 if (!isLocal) {
                     performDownload(
                         context = context,
-                        streams = DownloadStreams(audioUrl = null, videoUrl = null, isVideoCombinedWithAudio = false),
                         id = track.id,
                         title = track.title,
                         artist = track.artist,
@@ -346,7 +344,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                         playlistsViewModel = this@PlaylistsViewModel,
                         onMessage = {},
                     )
-                    delay(600) // Espacement de 600 ms entre les requêtes pour éviter le blocage HTTP 429 de YouTube
+                    delay(600.milliseconds) // Espacement de 600 ms entre les requêtes pour éviter le blocage HTTP 429 de YouTube
                 }
             }
         }

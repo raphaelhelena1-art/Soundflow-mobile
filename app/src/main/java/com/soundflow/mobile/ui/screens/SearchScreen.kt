@@ -66,10 +66,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.annotation.OptIn
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import coil.compose.AsyncImage
-import com.soundflow.core.extraction.DownloadStreams
 import com.soundflow.core.extraction.SearchResult
 import com.soundflow.mobile.R
 import com.soundflow.mobile.downloads.DownloadsViewModel
@@ -297,7 +297,7 @@ fun SearchScreen(
                                     isVideoDownloaded -> pendingDelete = result
                                     isAudioDownloaded -> {
                                         coroutineScope.launch {
-                                            startDownload(context, viewModel, playlistsViewModel, downloadsViewModel, result, downloadVideo = true, snackbarHostState)
+                                            startDownload(context, playlistsViewModel, downloadsViewModel, result, downloadVideo = true, snackbarHostState)
                                         }
                                     }
                                     else -> pendingDownload = result
@@ -325,13 +325,13 @@ fun SearchScreen(
             onChoiceAudio = {
                 pendingDownload = null
                 coroutineScope.launch {
-                    startDownload(context, viewModel, playlistsViewModel, downloadsViewModel, result, downloadVideo = false, snackbarHostState)
+                    startDownload(context, playlistsViewModel, downloadsViewModel, result, downloadVideo = false, snackbarHostState)
                 }
             },
             onChoiceVideo = {
                 pendingDownload = null
                 coroutineScope.launch {
-                    startDownload(context, viewModel, playlistsViewModel, downloadsViewModel, result, downloadVideo = true, snackbarHostState)
+                    startDownload(context, playlistsViewModel, downloadsViewModel, result, downloadVideo = true, snackbarHostState)
                 }
             },
         )
@@ -422,9 +422,9 @@ private fun DownloadChoiceDialog(onDismiss: () -> Unit, onChoiceAudio: () -> Uni
     )
 }
 
+@OptIn(UnstableApi::class)
 private suspend fun startDownload(
     context: Context,
-    viewModel: SearchViewModel,
     playlistsViewModel: PlaylistsViewModel,
     downloadsViewModel: DownloadsViewModel,
     result: SearchResult,
@@ -432,10 +432,8 @@ private suspend fun startDownload(
     snackbarHostState: SnackbarHostState,
 ) {
     try {
-        val streams: DownloadStreams = viewModel.getDownloadStreams(result)
         performDownload(
             context = context,
-            streams = streams,
             id = result.id,
             title = result.title,
             artist = result.uploaderName,
