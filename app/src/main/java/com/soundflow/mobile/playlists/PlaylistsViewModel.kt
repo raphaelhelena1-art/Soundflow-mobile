@@ -97,7 +97,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                             val updatedTracks = playlist.tracks.map { track ->
                                 val vId = store.extractVideoId(track.id)
                                 val match = completedMap[vId]
-                                if (match != null && match.localUri != null) {
+                                if ((match != null) && (match.localUri != null)) {
                                     track.copy(mediaUrl = match.localUri, isDownloaded = true)
                                 } else {
                                     track

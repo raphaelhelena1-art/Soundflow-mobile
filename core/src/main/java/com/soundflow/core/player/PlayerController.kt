@@ -65,7 +65,50 @@ class PlayerController(private val context: Context) {
     private val _playbackMode = MutableStateFlow(PlaybackMode.SHUFFLE)
     val playbackMode: StateFlow<PlaybackMode> = _playbackMode.asStateFlow()
 
-    private var isCrossfading = false
+    private var lastBackClickTime = 0L
+
+    private val broadcastReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: android.content.Intent?) {
+            when (intent?.action) {
+                "com.soundflow.mobile.ACTION_SKIP_PREVIOUS" -> skipToPrevious()
+                "com.soundflow.mobile.ACTION_SKIP_NEXT" -> skipToNext()
+                "com.soundflow.mobile.ACTION_PLAY_PAUSE" -> togglePlayPause()
+                "com.soundflow.mobile.ACTION_REFRESH_TRACK" -> {
+                    mediaController?.seekTo(0L)
+                    _state.update { it.copy(positionMs = 0L) }
+                }
+            }
+        }
+    }
+
+    init {
+        val filter = android.content.IntentFilter().apply {
+            addAction("com.soundflow.mobile.ACTION_SKIP_PREVIOUS")
+            addAction("com.soundflow.mobile.ACTION_SKIP_NEXT")
+            addAction("com.soundflow.mobile.ACTION_PLAY_PAUSE")
+            addAction("com.soundflow.mobile.ACTION_REFRESH_TRACK")
+        }
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                context.registerReceiver(broadcastReceiver, filter)
+            }
+        }
+    }
+
+    fun handleBackAction() {
+        val now = System.currentTimeMillis()
+        val delta = now - lastBackClickTime
+        lastBackClickTime = now
+
+        if ((delta >= 1L) && (delta <= 1200L)) {
+            skipToPrevious()
+        } else {
+            mediaController?.seekTo(0L)
+            _state.update { it.copy(positionMs = 0L) }
+        }
+    }
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -86,15 +129,16 @@ class PlayerController(private val context: Context) {
                     isBuffering = playbackState == Player.STATE_BUFFERING,
                 )
             }
-            if (playbackState == Player.STATE_ENDED) {
-                handleTrackEnded()
-            }
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-            // Dans SoundFlow, la navigation dans la file (skipToNext, skipToPrevious, handleTrackEnded)
-            // est gérée dans l'état Kotlin (queue, currentIndex). Les MediaItems étant résolus et envoyés
-            // un par un à ExoPlayer, on ne réinitialise pas currentIndex ici.
+            val controller = mediaController ?: return
+            currentIndex = controller.currentMediaItemIndex
+            val track = queue.getOrNull(currentIndex)
+            if (track != null) {
+                val resolved = preloadedTracks[track.id] ?: track
+                _state.update { it.copy(currentTrack = resolved) }
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -117,12 +161,22 @@ class PlayerController(private val context: Context) {
         )
     }
 
+
+
+
+
+    fun skipToNext() {
+        mediaController?.seekToNextMediaItem()
+        mediaController?.play()
+    }
+
+    fun skipToPrevious() {
+        mediaController?.seekToPreviousMediaItem()
+        mediaController?.play()
+    }
+
     fun playTrack(track: Track) {
-        preloadedTracks.clear()
-        queue = listOf(track)
-        currentIndex = 0
-        shuffleOrder = emptyList()
-        playCurrentQueueItem()
+        playQueue(listOf(track), 0)
     }
 
     fun playQueue(tracks: List<Track>, startIndex: Int = 0) {
@@ -131,134 +185,48 @@ class PlayerController(private val context: Context) {
         queue = tracks
         currentIndex = startIndex.coerceIn(tracks.indices)
         if (_playbackMode.value == PlaybackMode.SHUFFLE) regenerateShuffleOrder()
-        playCurrentQueueItem()
-    }
 
-    private val _crossfadeSeconds = MutableStateFlow(0f)
-    val crossfadeSeconds: StateFlow<Float> = _crossfadeSeconds.asStateFlow()
-
-    fun setCrossfadeSeconds(seconds: Float) {
-        _crossfadeSeconds.value = seconds
-    }
-
-    private fun performCrossfadeAndSwitch(switchAction: () -> Unit) {
-        val controller = mediaController ?: run { switchAction(); return }
-        val fadeSec = _crossfadeSeconds.value
-        if (fadeSec <= 0f || isCrossfading) {
-            switchAction()
-            return
-        }
-        isCrossfading = true
-        scope.launch {
-            val fadeHalfMs = ((fadeSec * 1000f) / 2f).toLong().coerceAtLeast(100L)
-            val steps = 25
-            val stepDelay = (fadeHalfMs / steps).coerceAtLeast(15L)
-            for (i in steps downTo 0) {
-                controller.volume = i.toFloat() / steps
-                delay(stepDelay)
-            }
-            switchAction()
-            controller.volume = 0f
-            for (i in 1..steps) {
-                controller.volume = i.toFloat() / steps
-                delay(stepDelay)
-            }
-            controller.volume = 1f
-            isCrossfading = false
-        }
-    }
-
-    fun skipToNext() {
-        if (queue.size <= 1) return
-        performCrossfadeAndSwitch {
-            currentIndex = nextIndex()
-            playCurrentQueueItem()
-        }
-    }
-
-    fun skipToPrevious() {
-        if (queue.size <= 1) return
-        performCrossfadeAndSwitch {
-            currentIndex = previousIndex()
-            playCurrentQueueItem()
-        }
-    }
-
-    private fun playCurrentQueueItem() {
-        val track = queue.getOrNull(currentIndex) ?: return
         val controller = mediaController ?: return
-
         playJob?.cancel()
 
         if (controller.isPlaying) {
             controller.pause()
         }
 
-        controller.repeatMode = if (_playbackMode.value == PlaybackMode.REPEAT_ONE) {
-            Player.REPEAT_MODE_ONE
-        } else {
-            Player.REPEAT_MODE_OFF
-        }
-
         _state.update {
             it.copy(
-                currentTrack = track,
                 isBuffering = true,
                 errorMessage = null,
             )
         }
 
-        playJob = scope.launch {
-            val preloaded = preloadedTracks[track.id] ?: preloadedTracks[track.mediaUrl]
-            val resolvedTrack = preloaded ?: resolvePlayableTrack(track)
+        playJob = scope.launch(Dispatchers.IO) {
+            val resolvedTracks = queue.map { t ->
+                preloadedTracks[t.id] ?: resolvePlayableTrack(t) ?: t
+            }
+            resolvedTracks.forEach { preloadedTracks[it.id] = it }
 
-            if (resolvedTrack == null) {
-                controller.stop()
-                controller.clearMediaItems()
-                _state.update {
-                    it.copy(
-                        isBuffering = false,
-                        isPlaying = false,
-                        errorMessage = "Impossible de lire le morceau : extraction du flux audio échouée.",
-                    )
+            val currentResolved = resolvedTracks.getOrNull(currentIndex) ?: resolvedTracks.first()
+
+            withContext(Dispatchers.Main) {
+                _state.update { it.copy(currentTrack = currentResolved, isBuffering = false) }
+
+                val mediaItems = resolvedTracks.map { buildMediaItem(it) }
+                controller.setMediaItems(mediaItems, currentIndex, 0L)
+                controller.repeatMode = if (_playbackMode.value == PlaybackMode.REPEAT_ONE) {
+                    Player.REPEAT_MODE_ONE
+                } else {
+                    Player.REPEAT_MODE_OFF
                 }
-                return@launch
-            }
-
-            _state.update { it.copy(currentTrack = resolvedTrack, isBuffering = false) }
-
-            val item = buildMediaItem(resolvedTrack)
-            controller.setMediaItem(item)
-            controller.prepare()
-            controller.play()
-
-            preloadNextTrack()
-        }
-    }
-
-    private fun preloadNextTrack() {
-        preloadJob?.cancel()
-        if (queue.size <= 1) return
-
-        val nextIdx = nextIndex()
-        val nextTrack = queue.getOrNull(nextIdx) ?: return
-
-        if (preloadedTracks.containsKey(nextTrack.id) ||
-            nextTrack.isDownloaded ||
-            nextTrack.mediaUrl.startsWith("file:", ignoreCase = true) ||
-            nextTrack.mediaUrl.startsWith("content:", ignoreCase = true)
-        ) {
-            return
-        }
-
-        preloadJob = scope.launch {
-            val resolved = resolvePlayableTrack(nextTrack)
-            if (resolved != null) {
-                preloadedTracks[nextTrack.id] = resolved
-                preloadedTracks[nextTrack.mediaUrl] = resolved
+                controller.prepare()
+                controller.play()
             }
         }
     }
+
+
+
+
 
     private suspend fun resolvePlayableTrack(track: Track): Track? = withContext(Dispatchers.IO) {
         val isFileScheme = track.mediaUrl.startsWith("file:", ignoreCase = true)
@@ -398,54 +366,6 @@ class PlayerController(private val context: Context) {
         }
     }
 
-    private fun nextIndex(): Int {
-        if (_playbackMode.value == PlaybackMode.SHUFFLE && shuffleOrder.isNotEmpty()) {
-            val pos = shuffleOrder.indexOf(currentIndex)
-            val nextPos = (pos + 1) % shuffleOrder.size
-            return shuffleOrder[nextPos]
-        }
-        val next = currentIndex + 1
-        return if (next >= queue.size) 0 else next
-    }
-
-    private fun previousIndex(): Int {
-        if (_playbackMode.value == PlaybackMode.SHUFFLE && shuffleOrder.isNotEmpty()) {
-            val pos = shuffleOrder.indexOf(currentIndex)
-            val prevPos = if (pos - 1 < 0) shuffleOrder.size - 1 else pos - 1
-            return shuffleOrder[prevPos]
-        }
-        val prev = currentIndex - 1
-        return if (prev < 0) queue.size - 1 else prev
-    }
-
-    private fun handleTrackEnded() {
-        if (queue.isEmpty()) return
-        when (_playbackMode.value) {
-            PlaybackMode.REPEAT_ONE -> playCurrentQueueItem()
-            PlaybackMode.REPEAT_ALL -> {
-                performCrossfadeAndSwitch {
-                    currentIndex = nextIndex()
-                    playCurrentQueueItem()
-                }
-            }
-            PlaybackMode.SHUFFLE -> {
-                performCrossfadeAndSwitch {
-                    currentIndex = nextIndex()
-                    playCurrentQueueItem()
-                }
-            }
-            PlaybackMode.SEQUENTIAL -> {
-                val isLast = currentIndex >= queue.size - 1
-                if (!isLast) {
-                    performCrossfadeAndSwitch {
-                        currentIndex = nextIndex()
-                        playCurrentQueueItem()
-                    }
-                }
-            }
-        }
-    }
-
     fun setSleepTimer(durationMs: Long?) {
         sleepTimerJob?.cancel()
         if (durationMs == null) return
@@ -480,24 +400,14 @@ class PlayerController(private val context: Context) {
             while (true) {
                 val controller = mediaController
                 val pos = controller?.currentPosition ?: 0L
-                val dur = controller?.duration ?: 0L
                 _state.update { it.copy(positionMs = pos) }
-
-                val fadeSec = _crossfadeSeconds.value
-                if (fadeSec > 0f && !isCrossfading && controller?.isPlaying == true && dur > 5000L && _playbackMode.value != PlaybackMode.REPEAT_ONE) {
-                    val fadeMs = (fadeSec * 1000f).toLong()
-                    val remainingMs = dur - pos
-                    if (remainingMs in 100L..fadeMs) {
-                        skipToNext()
-                    }
-                }
-
                 delay(200)
             }
         }
     }
 
     fun release() {
+        runCatching { context.unregisterReceiver(broadcastReceiver) }
         playJob?.cancel()
         preloadJob?.cancel()
         preloadedTracks.clear()

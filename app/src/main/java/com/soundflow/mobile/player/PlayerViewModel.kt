@@ -59,9 +59,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             }?.localUri
         }
 
+
+
         viewModelScope.launch {
-            store.crossfadeSecondsFlow.collect { sec ->
-                controller.setCrossfadeSeconds(sec)
+            state.collect { state ->
+                com.soundflow.mobile.widget.SoundFlowAppWidgetProvider.updateWidgets(application, state.currentTrack, state.isPlaying)
             }
         }
 
@@ -98,10 +100,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setSleepTimer(durationMs: Long?) = controller.setSleepTimer(durationMs)
 
-    fun setCrossfadeSeconds(seconds: Float) {
-        controller.setCrossfadeSeconds(seconds)
-        viewModelScope.launch { store.saveCrossfadeSeconds(seconds) }
-    }
+
 
     fun applyEqualizerPreset(preset: EqualizerPreset) = controller.applyEqualizerPreset(preset)
 
@@ -112,6 +111,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun skipToNext() = controller.skipToNext()
 
     fun skipToPrevious() = controller.skipToPrevious()
+
+    fun handleBackAction() = controller.handleBackAction()
 
     override fun onCleared() {
         controller.release()

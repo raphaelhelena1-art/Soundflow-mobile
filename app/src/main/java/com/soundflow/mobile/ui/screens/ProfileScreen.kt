@@ -72,13 +72,7 @@ fun ProfileScreen(playerViewModel: PlayerViewModel) {
     var selectedSleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
     var selectedLanguage by remember { mutableStateOf(initialLanguage) }
     var selectedEqualizerIndex by remember { mutableStateOf(0) }
-    val savedCrossfade by playerViewModel.crossfadeSeconds.collectAsStateWithLifecycle()
-    var crossfadeSeconds by remember(savedCrossfade) { mutableStateOf(savedCrossfade) }
     var showResetConfirmation by remember { mutableStateOf(false) }
-
-    LaunchedEffect(savedCrossfade) {
-        crossfadeSeconds = savedCrossfade
-    }
 
     val sleepTimerLabel = if (selectedSleepTimerMinutes == null) offLabel else "$selectedSleepTimerMinutes min"
 
@@ -98,25 +92,7 @@ fun ProfileScreen(playerViewModel: PlayerViewModel) {
             )
         }
 
-        item {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                Text("Crossfade : ${crossfadeSeconds.toInt()}s", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    text = stringResource(R.string.settings_crossfade_desc),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = crossfadeSeconds,
-                    onValueChange = { crossfadeSeconds = it },
-                    onValueChangeFinished = {
-                        playerViewModel.setCrossfadeSeconds(crossfadeSeconds)
-                    },
-                    valueRange = 0f..12f,
-                    steps = 11,
-                )
-            }
-        }
+
 
         item {
             DropdownSetting(

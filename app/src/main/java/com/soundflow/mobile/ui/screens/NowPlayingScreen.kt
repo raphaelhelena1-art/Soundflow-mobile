@@ -229,7 +229,7 @@ fun NowPlayingScreen(
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = playerViewModel::skipToPrevious) {
+                            IconButton(onClick = playerViewModel::handleBackAction) {
                                 Icon(Icons.Filled.SkipPrevious, contentDescription = null, modifier = Modifier.size(32.dp))
                             }
                             if (playerState.isBuffering) {
